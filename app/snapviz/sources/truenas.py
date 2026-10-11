@@ -338,6 +338,10 @@ class TrueNASSource:
                 return
             if rtype == "EXPIRED":
                 raise TrueNASError("The TrueNAS API key is expired or was revoked." + revoked_hint)
+            if rtype == "DENIED":
+                raise TrueNASError(
+                    "The API key's user lacks API access: add it to a group with the Read-Only Administrator role."
+                )
             raise TrueNASError(f"TrueNAS login failed ({rtype}). Check API key and user name.")
         try:
             ok = await conn.call("auth.login_with_api_key", [self.api_key])
@@ -348,7 +352,13 @@ class TrueNASSource:
                 ) from None
             raise
         if not ok:
-            raise TrueNASError("TrueNAS rejected the API key." + revoked_hint)
+            # auth.login_with_api_key hides the reason; TrueNAS writes it to System > Audit
+            raise TrueNASError(
+                "TrueNAS rejected the API key. Common causes: the key's user is not in a group with a role "
+                "such as Read-Only Administrator ('User lacks API access'), the key was copied incompletely "
+                "(format <id>-<key>), or it expired / was revoked." + revoked_hint
+                + " The exact reason is listed in TrueNAS under System > Audit (Authentication events)."
+            )
 
     async def _query_snapshots(self, conn) -> list[dict]:
         props = list(SNAPSHOT_PROPS)
