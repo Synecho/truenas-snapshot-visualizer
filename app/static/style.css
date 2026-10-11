@@ -110,6 +110,8 @@ select.btn { padding-right: 6px; }
 }
 .filters .f-search input { width: 240px; }
 .filters input:focus, .filters select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.filters .check { flex-direction: row; align-self: center; font-size: 13px; color: var(--text); text-transform: none; letter-spacing: 0; }
+.filters .check input { min-width: 0; }
 .filter-summary { margin-left: auto; align-self: center; }
 
 .banner {

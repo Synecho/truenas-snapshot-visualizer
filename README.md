@@ -137,6 +137,7 @@ the app refuses to send the key. Keep *Verify TLS Certificate* off for the defau
 | `SNAPVIZ_CACHE_SECONDS` | `300` | Cache lifetime; the Refresh button bypasses the cache |
 | `SNAPVIZ_ALLOW_IMPORT` | `true` | Allow uploading `zfs list` output in the UI |
 | `SNAPVIZ_ALLOW_DELETE` | `false` | Allow deleting snapshots in the UI (see above) |
+| `SNAPVIZ_EXCLUDE_DATASETS` | `*/.system*,*/.ix-apps/docker*,*/ix-applications/docker*,*/ix-applications/k3s*` | Comma-separated globs (`*`, `?`, full dataset name) for TrueNAS internals. Matching datasets are hidden while *hide system datasets* is on (default); empty = hide nothing |
 | `SNAPVIZ_PORT` | `8080` | Port the web server listens on |
 | `SNAPVIZ_LOG_LEVEL` | `INFO` | Python log level |
 

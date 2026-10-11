@@ -119,3 +119,20 @@ async def test_delete_held_snapshot_fails(delete_client):
     body = await r.json()
     assert body["failed"] == 1
     assert "holds" in body["results"][0]["error"]
+
+
+async def test_exclude_patterns(aiohttp_client, monkeypatch):
+    monkeypatch.setenv("SNAPVIZ_SOURCE", "demo")
+    c = await aiohttp_client(create_app())
+    body = await (await c.get("/api/snapshots")).json()
+    assert "*/.system*" in body["exclude_patterns"]
+
+    monkeypatch.setenv("SNAPVIZ_EXCLUDE_DATASETS", " tank/scratch* , */tmp ")
+    c = await aiohttp_client(create_app())
+    body = await (await c.get("/api/snapshots")).json()
+    assert body["exclude_patterns"] == ["tank/scratch*", "*/tmp"]
+
+    monkeypatch.setenv("SNAPVIZ_EXCLUDE_DATASETS", "")
+    c = await aiohttp_client(create_app())
+    body = await (await c.get("/api/snapshots")).json()
+    assert body["exclude_patterns"] == []
