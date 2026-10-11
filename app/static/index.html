@@ -33,6 +33,7 @@
         </div>
       </div>
       <button id="btn-import" class="btn" data-i18n="import">Import</button>
+      <button id="btn-keys" class="btn btn-ghost" data-i18n-title="kb_title" aria-keyshortcuts="?">?</button>
       <button id="btn-logout" class="btn btn-ghost" data-i18n="logout" hidden>Log out</button>
       <select id="lang-select" class="btn" aria-label="Language">
         <option value="en">EN</option>
@@ -204,6 +205,16 @@
       <div class="dialog-actions">
         <button value="cancel" class="btn btn-ghost" id="del-cancel" data-i18n="cancel">Cancel</button>
         <button id="del-go" class="btn btn-danger" disabled data-i18n="del_go">Delete permanently</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="keys-dialog">
+    <form method="dialog" class="dialog-body">
+      <h3 data-i18n="kb_title">Keyboard shortcuts</h3>
+      <div id="keys-list"></div>
+      <div class="dialog-actions">
+        <button value="cancel" class="btn" data-i18n="close">Close</button>
       </div>
     </form>
   </dialog>
