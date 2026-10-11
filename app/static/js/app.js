@@ -115,6 +115,7 @@ function updateHeader() {
   const badge = $('#source-badge');
   badge.textContent = state.imported ? 'import' : b.source === 'truenas' ? (b.host || 'TrueNAS') : b.source;
   badge.className = 'badge' + (b.source === 'demo' ? ' demo' : '');
+  badge.title = state.imported ? '' : b.connection || '';
   $('#fetched-info').textContent = state.imported ? '' : t('fetched', {
     when: new Date(b.fetched_at * 1000).toLocaleTimeString(getLang(), { hour: '2-digit', minute: '2-digit' }),
     sec: b.duration?.toLocaleString(getLang(), { maximumFractionDigits: 1 }) ?? '–',

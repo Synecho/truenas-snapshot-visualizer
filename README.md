@@ -31,19 +31,47 @@ UI languages: English, German.
 *Apps → Discover Apps → search for "Snapshot Visualizer" → Install* (once the app is accepted in the
 community train).
 
-### As a custom app (before it is in the catalog)
+### As a custom app – no API key needed
 
 *Apps → Discover Apps → ⋮ → Install via YAML* and paste:
 
 ```yaml
 services:
   snapshot-visualizer:
-    image: ghcr.io/synecho/truenas-snapshot-visualizer:1.0.0
-    user: "568:568"
+    image: ghcr.io/synecho/truenas-snapshot-visualizer:1.1.0
+    user: "0:0"
     read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges=true"]
     restart: unless-stopped
     ports:
       - "30527:8080"
+    volumes:
+      - /var/run/middleware:/run/middleware:ro
+```
+
+Then open `http://<your-truenas>:30527`.
+
+The app talks to the TrueNAS middleware through its local socket `/var/run/middleware/middlewared.sock`.
+TrueNAS authenticates socket connections by the caller's UID, so no key or password is involved:
+
+- `user: "0:0"` (above) – zero configuration. The container gets **full admin rights** on the TrueNAS API.
+  The app only runs read-only queries, but a vulnerability in it would expose your whole NAS, and the app's
+  web UI has no login of its own.
+- **Read-only (recommended)** – create a user in a group with the *Read-Only Administrator* privilege
+  (see below, steps 1–2, no key needed), look up its UID under *Credentials → Users* and use
+  `user: "<uid>:<uid>"` instead. The container can then only read.
+
+The official app catalog does not allow apps to mount `/var/run/middleware`, so the catalog version of the
+app uses an API key instead.
+
+### With an API key
+
+Needed for the catalog version or to look at another TrueNAS system over the network.
+Replace `user` and `volumes` in the YAML above with
+
+```yaml
+    user: "568:568"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
@@ -51,12 +79,13 @@ services:
       TRUENAS_API_KEY: "<your API key>"
 ```
 
-Then open `http://<your-truenas>:30527`.
+If both the socket and a key are configured, the app uses the socket and falls back to the key when the
+container user has no TrueNAS privileges.
 
-### API key
+### Creating a read-only user and API key
 
-The app needs an API key with read access to pools, datasets and snapshots.
-The safest option is a dedicated user:
+For the read-only socket variant you only need steps 1–2. The API key needs read access to pools,
+datasets and snapshots. The safest option is a dedicated user:
 
 1. **Credentials → Users → Add**: e.g. `snapviz`, *Disable Password* on, no shell, no SMB.
 2. Put the user into a group that has the **Read-Only Administrator** privilege
@@ -78,6 +107,8 @@ the app refuses to send the key. Keep *Verify TLS Certificate* off for the defau
 | Variable | Default | Description |
 |---|---|---|
 | `SNAPVIZ_SOURCE` | `truenas` | `truenas` (API), `demo` (generated data) or `zfs` (local `zfs` binary) |
+| `TRUENAS_SOCKET` | `/run/middleware/middlewared.sock` | Middleware socket inside the container (used when it exists) |
+| `TRUENAS_USE_SOCKET` | `true` | Set to `false` to ignore a mounted socket and always use the API key |
 | `TRUENAS_HOST` | `host.docker.internal` | Host name, IP or URL of the TrueNAS web UI |
 | `TRUENAS_API_KEY` | – | API key |
 | `TRUENAS_VERIFY_TLS` | `false` | Verify the TLS certificate |

@@ -1,6 +1,7 @@
 """Tests for the TrueNAS API client against a fake middleware server."""
 
 import json
+import sys
 
 import pytest
 from aiohttp import web
@@ -41,11 +42,16 @@ DATASETS = [
 ]
 
 
-def make_app(*, legacy=False, has_pool_snapshot=True, key_ok=True):
+def make_app(*, legacy=False, has_pool_snapshot=True, key_ok=True, socket_user=None):
     calls = []
 
     def dispatch(method, params):
         calls.append((method, params))
+        if method == "auth.me":
+            # the real middleware authenticates AF_UNIX peers by UID on connect
+            if socket_user:
+                return {"pw_name": socket_user, "pw_uid": 0}
+            raise LookupError(method)
         if method == "auth.login_with_api_key":
             return params[0] == KEY and key_ok
         if method == "system.info":
@@ -148,7 +154,7 @@ async def test_refuses_plain_ws_to_remote_host():
 
 
 async def test_missing_key():
-    with pytest.raises(TrueNASError, match="No TrueNAS API key"):
+    with pytest.raises(TrueNASError, match="No access to TrueNAS configured"):
         await TrueNASSource("nas.local", "").fetch()
 
 
@@ -170,3 +176,59 @@ def test_value_parsing():
     assert (snap.dataset, snap.name, snap.used) == ("a/b", "c", None)
     ds = parse_dataset({"id": "a", "type": "VOLUME", "properties": {"used": prop(5)}})
     assert (ds.name, ds.type, ds.used) == ("a", "VOLUME", 5)
+
+
+# ---------------------------------------------------------------- middleware socket
+
+unix_only = pytest.mark.skipif(sys.platform == "win32", reason="asyncio has no AF_UNIX support on Windows")
+
+
+@pytest.fixture
+async def unix_server(tmp_path):
+    runners = []
+
+    async def start(app):
+        path = str(tmp_path / "middlewared.sock")
+        runner = web.AppRunner(app)
+        await runner.setup()
+        await web.UnixSite(runner, path).start()
+        runners.append(runner)
+        return path
+
+    yield start
+    for r in runners:
+        await r.cleanup()
+
+
+@unix_only
+@pytest.mark.parametrize("legacy", [False, True])
+async def test_socket_without_key(unix_server, legacy):
+    app = make_app(socket_user="root", legacy=legacy, has_pool_snapshot=not legacy)
+    path = await unix_server(app)
+    report = await TrueNASSource("host.docker.internal", "", socket_path=path).fetch()
+    assert report.connection == "socket (root)"
+    assert report.host == "truenas-test"
+    assert len(report.snapshots) == 2
+    assert not any(m.startswith("auth.login") for m, _ in app["calls"])
+
+
+@unix_only
+async def test_socket_unprivileged_user_without_key(unix_server):
+    path = await unix_server(make_app(socket_user=None))
+    with pytest.raises(TrueNASError, match="no TrueNAS privileges"):
+        await TrueNASSource("host.docker.internal", "", socket_path=path).fetch()
+
+
+@unix_only
+async def test_socket_unprivileged_falls_back_to_api_key(unix_server, aiohttp_server):
+    path = await unix_server(make_app(socket_user=None))
+    tcp = await aiohttp_server(make_app())
+    report = await TrueNASSource(f"ws://127.0.0.1:{tcp.port}", KEY, socket_path=path).fetch()
+    assert report.connection == "API key"
+    assert len(report.snapshots) == 2
+
+
+async def test_no_socket_and_no_key(tmp_path):
+    src = TrueNASSource("nas.local", "", socket_path=str(tmp_path / "missing.sock"))
+    with pytest.raises(TrueNASError, match="No access to TrueNAS configured"):
+        await src.fetch()

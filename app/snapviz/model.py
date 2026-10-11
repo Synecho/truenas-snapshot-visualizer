@@ -41,6 +41,7 @@ class SnapshotReport:
     fetched_at: float = 0.0
     duration: float = 0.0
     host: Optional[str] = None
+    connection: Optional[str] = None  # e.g. "socket (root)" or "API key"
     warnings: list[str] = field(default_factory=list)
 
     def to_json(self) -> dict:
@@ -49,6 +50,7 @@ class SnapshotReport:
         return {
             "source": self.source,
             "host": self.host,
+            "connection": self.connection,
             "fetched_at": self.fetched_at,
             "duration": round(self.duration, 3),
             "warnings": self.warnings,

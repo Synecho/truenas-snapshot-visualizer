@@ -3,8 +3,15 @@
 * TrueNAS 25.04+ : JSON-RPC 2.0 on wss://<host>/api/current
 * TrueNAS 24.10  : legacy DDP-style protocol on wss://<host>/websocket (fallback)
 
-Only read-only query methods are called. API keys are never sent over an
-unencrypted connection: TrueNAS revokes keys that are used over plain ws://.
+Two ways to authenticate:
+
+* Middleware socket (preferred when mounted): /var/run/middleware/middlewared.sock
+  is world-connectable and TrueNAS authenticates the caller by its UID - root gets
+  full access, other UIDs get the roles of the matching TrueNAS user. No key needed.
+* API key over wss://. Keys are never sent over an unencrypted connection:
+  TrueNAS revokes keys that are used over plain ws://.
+
+Only read-only query methods are called.
 """
 
 from __future__ import annotations
@@ -16,6 +23,7 @@ import json
 import logging
 import os
 import ssl
+import stat
 from urllib.parse import urlsplit
 
 import aiohttp
@@ -28,6 +36,7 @@ log = logging.getLogger("snapviz.truenas")
 SNAPSHOT_PROPS = ["used", "referenced", "written", "creation", "userrefs"]
 DATASET_PROPS = ["used", "usedbysnapshots", "usedbydataset", "usedbychildren", "available", "referenced"]
 CALL_TIMEOUT = 900  # snapshot queries on big systems can take minutes
+DEFAULT_SOCKET = "/run/middleware/middlewared.sock"
 
 
 class TrueNASError(RuntimeError):
@@ -255,14 +264,26 @@ async def _receive_json(ws: aiohttp.ClientWebSocketResponse) -> dict:
 
 # ---------------------------------------------------------------- source
 
+class SocketNotAuthorized(TrueNASError):
+    pass
+
+
 class TrueNASSource:
     name = "truenas"
 
-    def __init__(self, host: str, api_key: str, verify_tls: bool = False, username: str | None = None):
+    def __init__(
+        self,
+        host: str,
+        api_key: str,
+        verify_tls: bool = False,
+        username: str | None = None,
+        socket_path: str | None = None,
+    ):
         self.base_url, self.hostname = parse_host(host)
         self.api_key = (api_key or "").strip()
         self.verify_tls = verify_tls
         self.username = (username or "").strip() or None
+        self.socket_path = socket_path or None
 
     @classmethod
     def from_env(cls) -> "TrueNASSource":
@@ -271,7 +292,17 @@ class TrueNASSource:
             api_key=os.environ.get("TRUENAS_API_KEY", ""),
             verify_tls=_env_bool("TRUENAS_VERIFY_TLS", False),
             username=os.environ.get("TRUENAS_USERNAME"),
+            socket_path=os.environ.get("TRUENAS_SOCKET", DEFAULT_SOCKET)
+            if _env_bool("TRUENAS_USE_SOCKET", True) else None,
         )
+
+    def _socket_available(self) -> bool:
+        if not self.socket_path:
+            return False
+        try:
+            return stat.S_ISSOCK(os.stat(self.socket_path).st_mode)
+        except OSError:
+            return False
 
     def _ssl(self):
         if not self.base_url.startswith("wss://") or self.verify_tls:
@@ -285,8 +316,9 @@ class TrueNASSource:
     def _check_config(self) -> None:
         if not self.api_key:
             raise TrueNASError(
-                "No TrueNAS API key configured. Create one in TrueNAS (Credentials > Users / API Keys) "
-                "and enter it in the app settings."
+                "No access to TrueNAS configured. Either mount the middleware socket "
+                f"(/var/run/middleware -> {os.path.dirname(DEFAULT_SOCKET)}) or create an API key in TrueNAS "
+                "(user menu > My API Keys) and enter it in the app settings."
             )
         if self.base_url.startswith("ws://") and not _is_loopback(self.hostname):
             raise TrueNASError(
@@ -294,31 +326,30 @@ class TrueNASSource:
                 "used over plain HTTP. Use https:// (the default)."
             )
 
-    async def _connect(self, session: aiohttp.ClientSession):
-        kwargs = dict(ssl=self._ssl(), max_msg_size=0, autoping=True, heartbeat=None)
-        url = f"{self.base_url}/api/current"
+    async def _connect(self, session: aiohttp.ClientSession, base_url: str, ssl_ctx, label: str):
+        kwargs = dict(ssl=ssl_ctx, max_msg_size=0, autoping=True, heartbeat=None)
+        url = f"{base_url}/api/current"
         try:
             ws = await session.ws_connect(url, **kwargs)
             return _JsonRpc(ws)
         except aiohttp.WSServerHandshakeError as exc:
             if exc.status not in (400, 404, 405):
-                raise TrueNASError(f"WebSocket handshake with {url} failed: HTTP {exc.status} {exc.message}") from None
-            log.info("%s not available (HTTP %s), trying legacy /websocket (TrueNAS 24.10)", url, exc.status)
+                raise TrueNASError(f"WebSocket handshake with {label} failed: HTTP {exc.status} {exc.message}") from None
+            log.info("%s/api/current not available (HTTP %s), trying legacy /websocket (TrueNAS 24.10)", label, exc.status)
         except aiohttp.ClientConnectorCertificateError as exc:
             raise TrueNASError(
                 f"TLS certificate of {self.hostname} could not be verified ({exc.certificate_error}). "
                 "Disable 'Verify TLS Certificate' for the default self-signed certificate."
             ) from None
         except aiohttp.ClientConnectorError as exc:
-            raise TrueNASError(f"Cannot connect to TrueNAS at {self.base_url}: {exc.os_error or exc}") from None
+            raise TrueNASError(f"Cannot connect to TrueNAS at {label}: {exc.os_error or exc}") from None
         except aiohttp.ClientError as exc:
-            raise TrueNASError(f"Cannot connect to TrueNAS at {self.base_url}: {exc}") from None
+            raise TrueNASError(f"Cannot connect to TrueNAS at {label}: {exc}") from None
 
-        url = f"{self.base_url}/websocket"
         try:
-            ws = await session.ws_connect(url, **kwargs)
+            ws = await session.ws_connect(f"{base_url}/websocket", **kwargs)
         except aiohttp.ClientError as exc:
-            raise TrueNASError(f"Cannot connect to TrueNAS at {url}: {exc}") from None
+            raise TrueNASError(f"Cannot connect to TrueNAS at {label}: {exc}") from None
         conn = _Legacy(ws)
         await conn.handshake()
         return conn
@@ -360,6 +391,21 @@ class TrueNASSource:
                 + " The exact reason is listed in TrueNAS under System > Audit (Authentication events)."
             )
 
+    async def _socket_identity(self, conn) -> str:
+        """TrueNAS authenticates socket connections by the caller's UID; check that it worked."""
+        try:
+            me = await conn.call("auth.me")
+        except RpcError:
+            me = None
+        if not isinstance(me, dict):
+            uid = os.getuid() if hasattr(os, "getuid") else "?"
+            raise SocketNotAuthorized(
+                f"Connected to the TrueNAS middleware socket, but the container user (UID {uid}) has no TrueNAS "
+                "privileges. Run the container as root (user: \"0:0\") or as the UID of a TrueNAS user in a group "
+                "with the Read-Only Administrator role - or configure an API key."
+            )
+        return me.get("pw_name") or me.get("username") or "?"
+
     async def _query_snapshots(self, conn) -> list[dict]:
         props = list(SNAPSHOT_PROPS)
         methods = ["pool.snapshot.query", "zfs.snapshot.query"]
@@ -376,7 +422,7 @@ class TrueNASSource:
                         continue
                     if exc.not_authorized:
                         raise TrueNASError(
-                            f"The API key's user may not call {method}. Give it the Read-Only Administrator role."
+                            f"Not allowed to call {method}. The TrueNAS user needs the Read-Only Administrator role."
                         ) from None
                     break
             # retry once without the optional hold count, in case a version rejects it
@@ -402,24 +448,15 @@ class TrueNASSource:
         warnings.append("Dataset details unavailable (pool.dataset.query failed) - shared snapshot space cannot be shown.")
         return []
 
-    async def fetch(self) -> SnapshotReport:
-        self._check_config()
-        report = SnapshotReport(source="truenas", host=self.hostname)
-        timeout = aiohttp.ClientTimeout(total=None, sock_connect=15, sock_read=None)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            conn = await self._connect(session)
-            try:
-                await self._login(conn)
-                try:
-                    info = await conn.call("system.info")
-                    if isinstance(info, dict) and info.get("hostname"):
-                        report.host = info["hostname"]
-                except RpcError:
-                    pass
-                snaps = await self._query_snapshots(conn)
-                datasets = await self._query_datasets(conn, report.warnings)
-            finally:
-                await conn.ws.close()
+    async def _collect(self, conn, report: SnapshotReport) -> None:
+        try:
+            info = await conn.call("system.info")
+            if isinstance(info, dict) and info.get("hostname"):
+                report.host = info["hostname"]
+        except RpcError:
+            pass
+        snaps = await self._query_snapshots(conn)
+        datasets = await self._query_datasets(conn, report.warnings)
 
         seen: set[str] = set()
         for row in datasets:
@@ -429,7 +466,43 @@ class TrueNASSource:
                 report.datasets.append(d)
         report.snapshots = [parse_snapshot(r) for r in snaps if (r.get("name") or r.get("id"))]
         ensure_datasets(report)
+
+    async def _fetch_socket(self) -> SnapshotReport:
+        report = SnapshotReport(source="truenas", host="localhost")
+        timeout = aiohttp.ClientTimeout(total=None, sock_connect=15, sock_read=None)
+        connector = aiohttp.UnixConnector(path=self.socket_path)
+        async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
+            conn = await self._connect(session, "ws://localhost", True, self.socket_path)
+            try:
+                user = await self._socket_identity(conn)
+                report.connection = f"socket ({user})"
+                await self._collect(conn, report)
+            finally:
+                await conn.ws.close()
         return report
+
+    async def _fetch_api_key(self) -> SnapshotReport:
+        self._check_config()
+        report = SnapshotReport(source="truenas", host=self.hostname, connection="API key")
+        timeout = aiohttp.ClientTimeout(total=None, sock_connect=15, sock_read=None)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            conn = await self._connect(session, self.base_url, self._ssl(), self.base_url)
+            try:
+                await self._login(conn)
+                await self._collect(conn, report)
+            finally:
+                await conn.ws.close()
+        return report
+
+    async def fetch(self) -> SnapshotReport:
+        if self._socket_available():
+            try:
+                return await self._fetch_socket()
+            except SocketNotAuthorized as exc:
+                if not self.api_key:
+                    raise
+                log.warning("%s Falling back to the API key.", exc)
+        return await self._fetch_api_key()
 
     async def close(self) -> None:
         pass
