@@ -38,7 +38,7 @@ community train).
 ```yaml
 services:
   snapshot-visualizer:
-    image: ghcr.io/synecho/truenas-snapshot-visualizer:1.1.0
+    image: ghcr.io/synecho/truenas-snapshot-visualizer:1.1.1
     user: "0:0"
     read_only: true
     cap_drop: [ALL]
