@@ -22,6 +22,8 @@ Filters (name / regex, dataset, age, minimum size), size metric (`used`, `writte
 apply to every view.
 The address bar always holds the current view, filters, treemap zoom and selected snapshot, so you can
 bookmark a view or send it as a link.
+Keyboard: `?` lists all shortcuts – `/` search, `1`–`5` views, `↑`/`↓` or `j`/`k` through the snapshots table,
+`Space` marks a snapshot, `Backspace` zooms the treemap out.
 The details panel shows ready-to-copy `zfs` commands, deletion only as a dry run
 (`zfs destroy -nv`). By default the app is read-only; deleting snapshots from the UI is an opt-in feature (`SNAPVIZ_ALLOW_DELETE`).
 

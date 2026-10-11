@@ -429,12 +429,7 @@ function renderTreemap() {
         else if (node.kind === 'shared') showSharedDetails(node.ref);
       },
       onZoom: node => { if (node.ref?.name) zoomTo(node.ref.name); },
-      onZoomOut: () => {
-        if (!state.zoom) return;
-        const p = state.datasets.get(state.zoom)?.parent;
-        const base = filters.dataset;
-        zoomTo(p && (!base || p === base || p.startsWith(base + '/')) && state.datasets.has(p) ? p : null);
-      },
+      onZoomOut: zoomOut,
     });
   }
   const tree = buildTree();
@@ -460,6 +455,13 @@ function renderTreemap() {
 function countLeaves(node) {
   if (!node.children) return node.kind === 'snapshot' ? 1 : 0;
   return node.children.reduce((a, c) => a + countLeaves(c), 0);
+}
+
+function zoomOut() {
+  if (!state.zoom) return;
+  const p = state.datasets.get(state.zoom)?.parent;
+  const base = filters.dataset;
+  zoomTo(p && (!base || p === base || p.startsWith(base + '/')) && state.datasets.has(p) ? p : null);
 }
 
 function zoomTo(name) {
@@ -959,6 +961,75 @@ function resolvePendingSnap() {
   else { state.pendingSnap = null; syncHash(); } // deleted, or hidden as a system dataset
 }
 
+/* ======================= keyboard ======================= */
+
+const KEYS = [
+  ['kb_global', [
+    [['?'], 'kb_help'], [['/'], 'kb_search'], [['1', '…', '5'], 'kb_views'], [['r'], 'kb_refresh'], [['Esc'], 'kb_esc'],
+  ]],
+  ['kb_table', [
+    [['↑', '↓', '|', 'k', 'j'], 'kb_rows'], [['Home', 'End'], 'kb_ends'], [['PgUp', 'PgDn'], 'kb_page'], [['Space'], 'kb_mark'],
+  ]],
+  ['kb_treemap', [[['Backspace'], 'kb_zoom_out']]],
+];
+
+function renderKeys() {
+  const key = k => k === '…' ? ' … ' : k === '|' ? ` ${t('kb_or')} ` : `<kbd>${escapeHtml(k)}</kbd>`;
+  $('#keys-list').innerHTML = `<div class="keys">${KEYS.map(([group, rows]) => `<h4>${t(group)}</h4><dl>${
+    rows.map(([keys, desc]) => `<dt>${keys.map(key).join('')}</dt><dd>${t(desc)}</dd>`).join('')}</dl>`).join('')}</div>`;
+}
+
+function showKeys() {
+  renderKeys();
+  $('#keys-dialog').showModal();
+}
+
+/** Move the selection in the snapshots table and keep the row in view. */
+function moveSnap(to) {
+  if (!snRows.length) return;
+  const body = $('#sn-body');
+  const page = Math.max(1, Math.floor(body.clientHeight / ROW_H) - 1);
+  const cur = snRows.findIndex(s => s.id === state.selected);
+  const step = to === 'page' ? page : to === '-page' ? -page : to;
+  const i = Math.min(snRows.length - 1, Math.max(0,
+    to === 'first' ? 0 : to === 'last' ? snRows.length - 1 : cur < 0 ? 0 : cur + step));
+  const top = i * ROW_H;
+  if (top < body.scrollTop) body.scrollTop = top;
+  else if (top + ROW_H > body.scrollTop + body.clientHeight) body.scrollTop = top + ROW_H - body.clientHeight;
+  select(snRows[i]);
+}
+
+function onKey(e) {
+  if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+  const el = e.target;
+  if (el.closest?.('input, textarea, select, [contenteditable="true"]')) {
+    if (e.key === 'Escape' && el.id === 'f-search') el.blur();
+    return;
+  }
+  if (document.querySelector('dialog[open]')) return; // dialogs handle their own keys (Esc closes them)
+  if (e.key === 'Escape') { if (!$('#details').hidden) $('#details-close').click(); return; }
+  if (!state.raw && e.key !== '?') return;
+
+  const table = state.view === 'snapshots';
+  const down = () => moveSnap(1), up = () => moveSnap(-1);
+  const actions = {
+    '?': showKeys,
+    '/': () => { $('#f-search').focus(); $('#f-search').select(); },
+    r: () => load(true),
+    Backspace: state.view === 'treemap' && state.zoom ? zoomOut : null,
+    ArrowDown: table && down, j: table && down,
+    ArrowUp: table && up, k: table && up,
+    Home: table && (() => moveSnap('first')), End: table && (() => moveSnap('last')),
+    PageDown: table && (() => moveSnap('page')), PageUp: table && (() => moveSnap('-page')),
+    ' ': table && state.selected ? () => toggleSelection([state.selected]) : null,
+  };
+  const n = '12345'.indexOf(e.key);
+  const act = n >= 0 && e.key.length === 1 ? () => { state.view = VIEWS[n]; renderView(); } : actions[e.key];
+  if (!act) return;
+  e.preventDefault();
+  act();
+}
+
 /* ======================= wiring ======================= */
 
 function setDatasetFilter(name) {
@@ -1094,7 +1165,8 @@ function init() {
   new ResizeObserver(() => state.view === 'snapshots' && drawSnapRows(true)).observe($('#sn-body'));
   $('#sn-export').addEventListener('click', exportCsv);
   $('#details-close').addEventListener('click', () => { clearSelection(); syncHash(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') $('#details-close').click(); });
+  document.addEventListener('keydown', onKey);
+  $('#btn-keys').addEventListener('click', showKeys);
 
   // import dialog
   const dlg = $('#import-dialog');
