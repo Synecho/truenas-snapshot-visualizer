@@ -36,7 +36,7 @@ class Auth:
         self._failures: dict[str, list[float]] = {}
 
     @classmethod
-    def from_env(cls) -> "Auth | None":
+    def from_env(cls) -> Auth | None:
         password = os.environ.get("SNAPVIZ_PASSWORD", "")
         if not password:
             return None

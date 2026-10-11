@@ -42,7 +42,7 @@ def generate_self_signed(days: int = 3650) -> tuple[bytes, bytes]:
         x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Snapshot Visualizer (self-signed)"),
     ])
     sans = [x509.DNSName("localhost"), x509.DNSName(hostname), x509.IPAddress(ipaddress.ip_address("127.0.0.1"))]
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     cert = (
         x509.CertificateBuilder()
         .subject_name(name)

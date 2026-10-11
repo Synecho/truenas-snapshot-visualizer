@@ -197,12 +197,14 @@ from any ZFS system (Proxmox, Linux, FreeBSD, …). Nothing is stored on the ser
 ```sh
 cd app
 python -m venv .venv && . .venv/bin/activate
-pip install -r requirements.txt pytest pytest-aiohttp
+pip install -r requirements.txt pytest pytest-aiohttp trustme ruff==0.16.9
 SNAPVIZ_SOURCE=demo python -m snapviz      # http://localhost:8080
-pytest -q
+pytest -q && ruff check .
+npm ci && npm run lint && npm test         # Biome lint + node:test for the frontend
 ```
 
-The frontend is plain HTML/CSS/JavaScript without build step or external dependencies (`app/static`).
+The frontend is plain HTML/CSS/JavaScript without build step or runtime dependencies (`app/static`);
+Node is only needed for linting and tests. CI runs all of the above on every pull request.
 The backend is a small aiohttp server (`app/snapviz`).
 
 ```

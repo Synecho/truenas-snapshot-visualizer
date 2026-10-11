@@ -82,7 +82,7 @@ export class Timeline {
       const v = s[data.metric] ?? 0;
       if (v > vmax) vmax = v;
     }
-    if (!isFinite(tmin)) tmin = data.now - 86400;
+    if (!Number.isFinite(tmin)) tmin = data.now - 86400;
     this.d = { now: data.now, tmin, log: data.log };
 
     // axis + grid

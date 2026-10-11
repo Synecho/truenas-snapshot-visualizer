@@ -18,10 +18,22 @@ jobs:
         working-directory: app
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - name: Lint JavaScript (Biome)
+        run: npm run lint -- --reporter=github
+      - name: Test JavaScript (node:test)
+        run: npm test
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - run: pip install -r requirements.txt pytest pytest-aiohttp trustme
+      - run: pip install -r requirements.txt pytest pytest-aiohttp trustme ruff==0.16.9
+      - name: Lint Python (Ruff)
+        run: ruff check --output-format=github .
       - run: pytest -q
 
   image:

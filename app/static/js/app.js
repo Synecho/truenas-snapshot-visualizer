@@ -261,7 +261,7 @@ function renderView() {
   for (const v of ['overview', 'treemap', 'timeline', 'datasets', 'snapshots']) {
     $(`#view-${v}`).hidden = v !== state.view || !state.raw;
   }
-  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('active', b.dataset.view === state.view));
+  for (const b of document.querySelectorAll('.tabs button')) b.classList.toggle('active', b.dataset.view === state.view);
   syncHash();
   if (!state.raw) return;
   ({ overview: renderOverview, treemap: renderTreemap, timeline: renderTimeline, datasets: renderDatasets, snapshots: renderSnapshots })[state.view]();
@@ -506,7 +506,7 @@ function renderDatasets() {
       return {
         name: d.name, d, count: e.count, sum: e.sum,
         usedbysnapshots: d.usedbysnapshots, shared: d.shared, usedbydataset: d.usedbydataset, used: d.used,
-        oldest: isFinite(e.oldest) ? e.oldest : null, newest: e.newest || null,
+        oldest: Number.isFinite(e.oldest) ? e.oldest : null, newest: e.newest || null,
       };
     });
   const { key, dir } = state.dsSort;
@@ -808,7 +808,7 @@ function openDeleteDialog(ids) {
   const todo = snaps.filter(s => !(s.holds > 0));
   const newest = todo.filter(s => {
     const ds = state.datasets.get(s.dataset);
-    return ds && ds.snaps.every(o => (o.creation ?? 0) <= (s.creation ?? 0));
+    return ds?.snaps.every(o => (o.creation ?? 0) <= (s.creation ?? 0));
   });
   Object.assign(deleteState, { ids: todo.map(s => s.id), running: false, done: false });
 
@@ -1047,10 +1047,12 @@ function init() {
   $('#lang-select').value = getLang();
   applyStatic();
 
-  document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => {
-    state.view = b.dataset.view;
-    renderView();
-  }));
+  for (const b of document.querySelectorAll('.tabs button')) {
+    b.addEventListener('click', () => {
+      state.view = b.dataset.view;
+      renderView();
+    });
+  }
 
   const readFilters = () => {
     filters.search = $('#f-search').value;

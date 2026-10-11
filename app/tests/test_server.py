@@ -61,7 +61,7 @@ HDR = {"X-Snapviz-Action": "delete"}
 async def _first_snapshots(c, n=2):
     body = await (await c.get("/api/snapshots")).json()
     f = body["snapshot_fields"]
-    rows = [dict(zip(f, r)) for r in body["snapshots"]]
+    rows = [dict(zip(f, r, strict=True)) for r in body["snapshots"]]
     return rows, [f"{r['dataset']}@{r['name']}" for r in rows if not r["holds"]][:n]
 
 

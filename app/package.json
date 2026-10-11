@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "lint": "biome lint --error-on-warnings",
     "test": "node --test"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14"
   }
 }

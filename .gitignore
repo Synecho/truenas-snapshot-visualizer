@@ -4,3 +4,4 @@ __pycache__/
 .pytest_cache/
 truenas-catalog/**/templates/rendered/
 .claude/
+node_modules/

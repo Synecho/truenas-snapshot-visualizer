@@ -3,7 +3,7 @@ import { getLang } from './i18n.js';
 const UNITS = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB'];
 
 export function fmtBytes(n, digits) {
-  if (n == null || isNaN(n)) return '–';
+  if (typeof n !== 'number' || Number.isNaN(n)) return '–';
   if (n === 0) return '0 B';
   let i = 0;
   let v = Math.abs(n);
@@ -17,7 +17,7 @@ export function fmtNum(n) {
 }
 
 export function fmtPct(x) {
-  if (x == null || !isFinite(x)) return '–';
+  if (!Number.isFinite(x)) return '–';
   return (x * 100).toLocaleString(getLang(), { maximumFractionDigits: x < 0.1 ? 1 : 0 }) + ' %';
 }
 

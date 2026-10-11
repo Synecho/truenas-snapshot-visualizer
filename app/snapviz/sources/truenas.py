@@ -16,7 +16,6 @@ Only read-only query methods are called.
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import ipaddress
 import itertools
@@ -252,7 +251,7 @@ class _Legacy:
 async def _receive_json(ws: aiohttp.ClientWebSocketResponse) -> dict:
     try:
         msg = await ws.receive(timeout=CALL_TIMEOUT)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         raise TrueNASError("Timed out waiting for TrueNAS") from None
     if msg.type == aiohttp.WSMsgType.TEXT:
         return json.loads(msg.data)
@@ -287,7 +286,7 @@ class TrueNASSource:
         self.socket_path = socket_path or None
 
     @classmethod
-    def from_env(cls) -> "TrueNASSource":
+    def from_env(cls) -> TrueNASSource:
         return cls(
             host=os.environ.get("TRUENAS_HOST") or os.environ.get("TRUENAS_URL") or "host.docker.internal",
             api_key=os.environ.get("TRUENAS_API_KEY", ""),
