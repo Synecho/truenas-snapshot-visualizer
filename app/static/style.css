@@ -168,7 +168,11 @@ main { flex: 1; padding: 14px 16px 24px; min-height: 0; overflow: auto; position
 /* ---------- timeline ---------- */
 .timeline-wrap { position: relative; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow); overflow: auto; flex: 1; min-height: 240px; }
 #tl-canvas { display: block; }
-#tl-hist svg { display: block; width: 100%; }
+#tl-hist svg { display: block; width: 100%; overflow: visible; }
+.hist-max, .hist-x { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.hist-max { height: 18px; padding-left: 4px; }
+.hist-x { position: relative; height: 20px; }
+.hist-x span { position: absolute; top: 4px; transform: translateX(-50%); white-space: nowrap; }
 
 /* ---------- tables ---------- */
 .table-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow); overflow: auto; }

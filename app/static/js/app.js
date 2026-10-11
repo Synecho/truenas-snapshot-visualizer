@@ -699,14 +699,16 @@ function init() {
     renderView();
   }));
 
-  const onFilter = () => {
+  const readFilters = () => {
     filters.search = $('#f-search').value;
     filters.age = $('#f-age').value;
     filters.minsize = $('#f-minsize').value;
     filters.metric = $('#f-metric').value;
     filters.color = $('#f-color').value;
-    applyFilters();
   };
+  // browsers restore <select> values on reload; adopt them so the UI and the applied filters agree
+  readFilters();
+  const onFilter = () => { readFilters(); applyFilters(); };
   $('#f-search').addEventListener('input', debounce(onFilter, 200));
   for (const id of ['#f-age', '#f-minsize', '#f-metric', '#f-color']) $(id).addEventListener('change', onFilter);
   $('#f-dataset').addEventListener('change', e => setDatasetFilter(e.target.value));

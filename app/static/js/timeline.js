@@ -241,7 +241,9 @@ export function histogramSvg(snaps, metric, now, colorOfAge, labels) {
   const keys = [];
   for (let k = k0; k <= k1 && keys.length < 400; k++) keys.push(k);
   const max = Math.max(...keys.map(k => buckets.get(k)?.size ?? 0), 1);
-  const W = 1000, H = 170, B = 22, T = 8;
+  // Bars live in an SVG stretched to the container width (preserveAspectRatio="none" is fine for rects);
+  // text is HTML positioned in percent so it never gets distorted on wide or narrow screens.
+  const W = 1000, H = 132;
   const bw = W / keys.length;
   const every = Math.ceil(keys.length / 14);
   let bars = '', xl = '';
@@ -249,19 +251,20 @@ export function histogramSvg(snaps, metric, now, colorOfAge, labels) {
     const b = buckets.get(k);
     const x = i * bw;
     if (b && b.size > 0) {
-      const h = Math.max(1.5, (b.size / max) * (H - B - T));
+      const h = Math.max(1.5, (b.size / max) * H);
       const c = colorOfAge(now - mid(k));
-      bars += `<rect x="${(x + bw * 0.12).toFixed(1)}" y="${(H - B - h).toFixed(1)}" width="${Math.max(bw * 0.76, 1).toFixed(1)}" height="${h.toFixed(1)}" rx="1.5" fill="${rgb(c)}"><title>${escapeHtml(labelOf(k))}: ${escapeHtml(fmtBytes(b.size))} · ${b.count} snapshots</title></rect>`;
+      bars += `<rect x="${(x + bw * 0.12).toFixed(1)}" y="${(H - h).toFixed(1)}" width="${Math.max(bw * 0.76, 1).toFixed(1)}" height="${h.toFixed(1)}" fill="${rgb(c)}"><title>${escapeHtml(labelOf(k))}: ${escapeHtml(fmtBytes(b.size))} · ${b.count} snapshots</title></rect>`;
     } else if (b) {
-      bars += `<rect x="${(x + bw * 0.12).toFixed(1)}" y="${H - B - 1.5}" width="${Math.max(bw * 0.76, 1).toFixed(1)}" height="1.5" fill="currentColor" opacity=".35"><title>${escapeHtml(labelOf(k))}: ${b.count} snapshots</title></rect>`;
+      bars += `<rect x="${(x + bw * 0.12).toFixed(1)}" y="${H - 1.5}" width="${Math.max(bw * 0.76, 1).toFixed(1)}" height="1.5" fill="currentColor" opacity=".35"><title>${escapeHtml(labelOf(k))}: ${b.count} snapshots</title></rect>`;
     }
-    if (i % every === 0) xl += `<text x="${(x + bw / 2).toFixed(1)}" y="${H - 6}" text-anchor="middle">${escapeHtml(labelOf(k))}</text>`;
+    if (i % every === 0) xl += `<span style="left:${((x + bw / 2) / W * 100).toFixed(2)}%">${escapeHtml(labelOf(k))}</span>`;
   });
-  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="height:${H}px">
-    <g font-size="11" fill="currentColor" opacity=".65" style="font-family:system-ui">${xl}</g>
-    <text x="4" y="14" font-size="11" fill="currentColor" opacity=".65">${escapeHtml(fmtBytes(max))}</text>
-    <line x1="0" x2="${W}" y1="${H - B}" y2="${H - B}" stroke="currentColor" opacity=".25"/>
-    ${bars}</svg>`;
+  return `<div class="hist">
+    <div class="hist-max">${escapeHtml(fmtBytes(max))}</div>
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="height:${H}px">${bars}
+      <line x1="0" x2="${W}" y1="${H}" y2="${H}" stroke="currentColor" opacity=".25" vector-effect="non-scaling-stroke"/></svg>
+    <div class="hist-x">${xl}</div>
+  </div>`;
 }
 
 export function snapTooltip(s, now, t) {
