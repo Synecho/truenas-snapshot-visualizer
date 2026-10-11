@@ -28,7 +28,8 @@ with AND, e.g. `tank/vm age>90d >1g`.
 Keyboard: `?` lists all shortcuts – `/` search, `1`–`5` views, `↑`/`↓` or `j`/`k` through the snapshots table,
 `Space` marks a snapshot, `Backspace` zooms the treemap out.
 The details panel shows ready-to-copy `zfs` commands, deletion only as a dry run
-(`zfs destroy -nv`). By default the app is read-only; deleting snapshots from the UI is an opt-in feature (`SNAPVIZ_ALLOW_DELETE`).
+(`zfs destroy -nv`), and `zfs diff` commands that list which files a snapshot holds (the TrueNAS API cannot
+run `zfs diff`, so you paste them into the TrueNAS shell). By default the app is read-only; deleting snapshots from the UI is an opt-in feature (`SNAPVIZ_ALLOW_DELETE`).
 
 UI languages: English, German.
 
