@@ -1,25 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <defs>
-    <radialGradient id="c" cx="35%" cy="30%" r="80%">
-      <stop offset="0" stop-color="#fff" stop-opacity=".55"/>
-      <stop offset="1" stop-color="#000" stop-opacity=".25"/>
-    </radialGradient>
-  </defs>
-  <rect width="64" height="64" rx="12" fill="#0b2233"/>
-  <g stroke="#0b2233" stroke-width="2">
-    <rect x="6" y="6" width="30" height="34" fill="#0095d5"/>
-    <rect x="36" y="6" width="22" height="18" fill="#38b06e"/>
-    <rect x="36" y="24" width="22" height="16" fill="#f2be30"/>
-    <rect x="6" y="40" width="18" height="18" fill="#f07830"/>
-    <rect x="24" y="40" width="20" height="18" fill="#c42834"/>
-    <rect x="44" y="40" width="14" height="18" fill="#a2c440"/>
-  </g>
-  <g fill="url(#c)">
-    <rect x="7" y="7" width="28" height="32"/>
-    <rect x="37" y="7" width="20" height="16"/>
-    <rect x="37" y="25" width="20" height="14"/>
-    <rect x="7" y="41" width="16" height="16"/>
-    <rect x="25" y="41" width="18" height="16"/>
-    <rect x="45" y="41" width="12" height="16"/>
-  </g>
+  <rect width="64" height="64" rx="14" fill="#0b2233"/>
+  <path d="M9 20V9h11M44 9h11v11M55 44v11H44M20 55H9V44" fill="none" stroke="#e8eef3" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="17" y="17" width="15" height="30" rx="2" fill="#0095d5"/>
+  <rect x="34" y="17" width="13" height="14" rx="2" fill="#38b06e"/>
+  <rect x="34" y="33" width="13" height="14" rx="2" fill="#f07830"/>
 </svg>
