@@ -675,6 +675,19 @@ function copyBlock(cmd) {
   return `<div class="copy-row"><pre class="code">${escapeHtml(cmd)}</pre><button class="btn" data-copy="${escapeHtml(cmd)}">${t('copy')}</button></div>`;
 }
 
+/**
+ * zfs diff commands for the shell. The TrueNAS API has no diff method, so the app cannot run it itself.
+ * A snapshot's unique space (used) is data written after the previous snapshot and removed before the next
+ * one, so both directions help to explain it. zvols have no file level diff.
+ */
+function diffCommands(s, ds, prev, next) {
+  if (ds?.type === 'VOLUME') return '';
+  return `<div class="small muted">${t('d_cmd_diff')}</div>
+    ${prev ? `<div class="small">${t('d_diff_prev')}</div>${copyBlock(`zfs diff -F ${s.dataset}@${prev.name} ${s.id}`)}` : ''}
+    <div class="small">${next ? t('d_diff_next') : t('d_diff_live')}</div>
+    ${copyBlock(next ? `zfs diff -F ${s.id} ${s.dataset}@${next.name}` : `zfs diff -F ${s.id}`)}`;
+}
+
 function showDetails(s) {
   const ds = state.datasets.get(s.dataset);
   const neighbours = ds ? [...ds.snaps].sort((a, b) => (a.creation ?? 0) - (b.creation ?? 0)) : [];
@@ -695,6 +708,7 @@ function showDetails(s) {
     <p class="note">${t('d_used_note')}</p>
     <div class="small muted">${t('d_cmd_list')}</div>
     ${copyBlock(`zfs list -t snapshot -o name,used,written,refer,creation -s creation -r ${s.dataset}`)}
+    ${diffCommands(s, ds, prev, next)}
     <div class="small muted">${t('d_cmd_destroy')}</div>
     ${copyBlock(`zfs destroy -nv ${s.id}`)}
     ${prev && next ? copyBlock(`zfs destroy -nv ${s.dataset}@${prev.name}%${next.name}`) : ''}
