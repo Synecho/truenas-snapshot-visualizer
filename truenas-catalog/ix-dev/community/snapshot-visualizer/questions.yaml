@@ -54,7 +54,8 @@ questions:
         - variable: api_key
           label: TrueNAS API Key
           description: |
-            API key used to read datasets and snapshots. The app only performs read-only queries.</br>
+            API key used to read datasets and snapshots. The app only performs read-only queries
+            unless "Allow Deleting Snapshots" is enabled.</br>
             Recommended: create a dedicated user in a group with the Read-Only Administrator privilege
             (Credentials > Users / Groups), then create an API key for it (user menu > My API Keys).
           schema:

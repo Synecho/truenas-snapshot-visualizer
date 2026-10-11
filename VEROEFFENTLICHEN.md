@@ -2,74 +2,50 @@
 
 Der TrueNAS-"Store" ist das Repository [truenas/apps](https://github.com/truenas/apps).
 Neue Apps kommen per Pull Request in den **community**-Train. Davor muss das Docker-Image öffentlich
-erreichbar sein. Insgesamt sind es fünf Schritte.
+erreichbar sein.
 
-> Im Code ist `synecho` als GitHub-Account eingetragen (aus deiner git-Config abgeleitet).
-> Falls dein GitHub-Name anders lautet, ersetze `synecho` überall:
-> `README.md`, `truenas-catalog/.../app.yaml`, `ix_values.yaml`, `README.md` im Catalog-Ordner.
+## Stand
 
-## 1. Eigenes GitHub-Repo anlegen und pushen
+| Schritt | Status |
+|---|---|
+| GitHub-Repo `Synecho/truenas-snapshot-visualizer` | erledigt |
+| Image auf ghcr.io, öffentlich | erledigt (aktuell `1.3.0`) |
+| Catalog auf `app_version: 1.3.0`, Image per Digest gepinnt | erledigt |
+| Catalog-Template mit dem TrueNAS-Validator gerendert und gestartet | erledigt |
+| **GitHub-Releases mit Changelog** (`changelog_url` muss die Version enthalten) | **offen** – bisher gibt es nur Tags |
+| **API-Key-Modus auf echtem TrueNAS getestet** | **offen** – der Store nutzt den API-Key, nicht den Socket |
+| Issue bei truenas/apps eröffnen, PR stellen | offen |
 
-```bash
-git init -b main
-git add .
-git commit -m "Initial version of TrueNAS Snapshot Visualizer"
-git remote add origin https://github.com/synecho/truenas-snapshot-visualizer.git
-git push -u origin main
-```
+### API-Key-Modus vor dem PR testen
 
-Der Workflow `.github/workflows/docker.yml` führt die Tests aus und baut das Image
-`ghcr.io/synecho/truenas-snapshot-visualizer` für amd64 und arm64.
+Die Store-Version kann den Middleware-Socket nicht nutzen (die TrueNAS-App-Bibliothek verbietet das
+Einbinden von `/var/run/middleware`), sie arbeitet immer mit einem API-Key. Deshalb einmal testen:
 
-## 2. Release 1.0.0 taggen und Image öffentlich machen
+1. **Credentials → Groups → Add**, z. B. `snapviz-ro`, unter *Privileges* **Read-Only Administrator**.
+2. **Credentials → Users → Add**, z. B. `snapviz`: Passwort deaktivieren, keine Shell,
+   Gruppe `snapviz-ro` unter *Auxiliary Groups*.
+3. Oben rechts im Benutzer-Menü **My API Keys → Add**: Benutzer `snapviz` wählen, Key kopieren
+   (wird nur einmal angezeigt).
+4. Eine zweite Custom App per YAML mit `TRUENAS_API_KEY` statt Socket starten (Beispiel in der
+   `README.md`, Abschnitt *With an API key*) und prüfen, ob die Snapshots erscheinen.
 
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
+Den Key **nie über `http://` verwenden**: TrueNAS widerruft Keys, die unverschlüsselt gesendet werden.
+Die App verbindet sich deshalb immer per `wss://`. Schlägt der Login fehl, steht der Grund unter
+**System → Audit** (Ereignisse vom Typ *Authentication*).
 
-- Danach auf GitHub unter **Profil → Packages → truenas-snapshot-visualizer → Package settings →
-  Change visibility → Public** stellen. ghcr-Pakete sind standardmäßig **privat**, TrueNAS könnte das
-  Image sonst nicht laden.
-- Auf GitHub ein Release `v1.0.0` mit kurzem Changelog anlegen. Die Catalog-Regeln verlangen, dass
-  `changelog_url` die ausgelieferte Version enthält.
-
-## 3. Auf dem eigenen TrueNAS testen (vor dem PR!)
-
-**Apps → Discover Apps → ⋮ → Install via YAML**. Den YAML-Block aus der `README.md` einfügen und den
-API-Key eintragen.
-
-API-Key anlegen:
-
-1. **Credentials → Users → Add**, z. B. `snapviz`: Passwort deaktivieren, keine Shell.
-2. Den Benutzer einer Gruppe mit der Rolle **Read-Only Administrator** zuordnen
-   (Credentials → Groups → Privileges).
-3. Oben rechts im Benutzer-Menü **My API Keys → Add**: den Benutzer `snapviz` wählen und den Key kopieren.
-   Er wird nur einmal angezeigt.
-
-Wichtig: Den Key **nie über `http://` verwenden**. TrueNAS widerruft Keys, die unverschlüsselt
-gesendet werden. Die App nutzt deshalb immer `https`/`wss` und verweigert `http://` zu fremden Hosts.
-
-Unterstützt werden TrueNAS 24.10, 25.04, 25.10 und 27. Getestet wurde der Client nur gegen einen
-simulierten TrueNAS-Server. Bitte deshalb unbedingt einmal auf deinem echten System prüfen und
-eventuelle Fehlermeldungen aus dem Banner bzw. dem App-Log mitnehmen.
-
-## 4. Digest im Catalog eintragen
-
-Die Catalog-Regeln verlangen ein per Digest gepinntes Image:
+### Bei jedem neuen Release
 
 ```bash
-docker buildx imagetools inspect ghcr.io/synecho/truenas-snapshot-visualizer:1.0.0
+git tag v1.x.y
+git push origin v1.x.y
+docker buildx imagetools inspect ghcr.io/synecho/truenas-snapshot-visualizer:1.x.y
 ```
 
-Den `Digest: sha256:…` in `truenas-catalog/ix-dev/community/snapshot-visualizer/ix_values.yaml`
-eintragen:
+Im Catalog dann `app_version` und in `ix_values.yaml` den Tag `"1.x.y@sha256:<digest>"` anpassen.
+Solange die App noch nicht im Store ist, bleibt `version` in `app.yaml` bei `1.0.0`; danach muss sie
+bei jeder Änderung am Catalog-Eintrag erhöht werden.
 
-```yaml
-    tag: "1.0.0@sha256:<digest>"
-```
-
-## 5. Pull Request an truenas/apps
+## Pull Request an truenas/apps
 
 1. In [truenas/apps](https://github.com/truenas/apps/issues) ein Issue „New app: Snapshot Visualizer“
    eröffnen. Die Contribution-Regeln verlangen das vor dem PR.
@@ -89,9 +65,3 @@ eintragen:
    - `docs/icon.png` und die Bilder aus `docs/screenshots/` an den PR hängen. Die Maintainer laden sie
      auf `media.sys.truenas.net` hoch und nennen dir die URLs für `app.yaml` (`screenshots:`).
    - In der Vorlage die Checkbox „Part or All of this PR was generated by an LLM“ ankreuzen.
-
-Bei jeder späteren Änderung an der App gilt:
-
-- neues Image taggen (`v1.0.1` …),
-- im Catalog `app_version` und den Tag/Digest aktualisieren,
-- `version` in `app.yaml` erhöhen.
