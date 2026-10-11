@@ -693,31 +693,43 @@ function showDetails(s) {
   const neighbours = ds ? [...ds.snaps].sort((a, b) => (a.creation ?? 0) - (b.creation ?? 0)) : [];
   const i = neighbours.indexOf(s);
   const prev = neighbours[i - 1], next = neighbours[i + 1];
+  const blocked = s.holds > 0 ? t('d_held_block') : deleteBlockedReason();
   $('#details-body').innerHTML = `
     <h4>${escapeHtml(s.name)}</h4>
     <div class="sub">${escapeHtml(s.dataset)}</div>
+    <div class="d-tiles">
+      <div class="d-tile d-tile-main" title="${escapeHtml(t('d_used_note'))}">
+        <div class="label">${t('d_freed')}</div>
+        <div class="value">${fmtBytes(s.used)}</div>
+        <div class="hint">${t('d_freed_hint')}</div>
+      </div>
+      <div class="d-tile">
+        <div class="label">${t('d_age')}</div>
+        <div class="value">${fmtAge(s.age)}</div>
+        <div class="hint">${escapeHtml(fmtDate(s.creation))}</div>
+      </div>
+    </div>
     <dl>
-      <dt>${t('d_created')}</dt><dd>${escapeHtml(fmtDate(s.creation))}</dd>
-      <dt>${t('d_age')}</dt><dd>${fmtAge(s.age)}</dd>
-      <dt>${t('d_used')}</dt><dd>${fmtBytes(s.used)}</dd>
       <dt>${t('d_written')}</dt><dd>${fmtBytes(s.written)}</dd>
-      <dt>${t('d_referenced')}</dt><dd>${fmtBytes(s.referenced)}</dd>
+      <dt>${t('d_size_then')}</dt><dd>${fmtBytes(s.referenced)}</dd>
       ${s.holds ? `<dt>${t('d_holds')}</dt><dd>${s.holds}</dd>` : ''}
       ${ds?.usedbysnapshots != null ? `<dt>${t('col_snapspace')}</dt><dd>${fmtBytes(ds.usedbysnapshots)} (${t('snapshots_n', { n: ds.snaps.length })})</dd>` : ''}
     </dl>
-    <p class="note">${t('d_used_note')}</p>
-    <div class="small muted">${t('d_cmd_list')}</div>
-    ${copyBlock(`zfs list -t snapshot -o name,used,written,refer,creation -s creation -r ${s.dataset}`)}
-    ${diffCommands(s, ds, prev, next)}
-    <div class="small muted">${t('d_cmd_destroy')}</div>
-    ${copyBlock(`zfs destroy -nv ${s.id}`)}
-    ${prev && next ? copyBlock(`zfs destroy -nv ${s.dataset}@${prev.name}%${next.name}`) : ''}
-    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
-      <button class="btn" data-show-ds="${escapeHtml(s.dataset)}">${t('d_show_ds')}</button>
-      <button class="btn" data-zoom-ds="${escapeHtml(s.dataset)}">${t('d_zoom')}</button>
-      <button class="btn" data-pick-id="${escapeHtml(s.id)}">${state.selection.has(s.id) ? t('d_unselect') : t('d_select')}</button>
-      ${deleteBlockedReason() ? '' : `<button class="btn btn-danger" data-delete-id="${escapeHtml(s.id)}">${t('d_delete')}</button>`}
-    </div>`;
+    <div class="d-actions">
+      <button class="btn btn-danger d-delete" data-delete-id="${escapeHtml(s.id)}"${blocked ? ' disabled' : ''}>${t('d_delete_btn')}</button>
+      ${blocked ? `<div class="d-blocked">${escapeHtml(blocked)}</div>` : ''}
+      <div class="d-actions-row">
+        <button class="btn" data-pick-id="${escapeHtml(s.id)}">${state.selection.has(s.id) ? t('d_unselect') : t('d_select')}</button>
+        <button class="btn" data-show-ds="${escapeHtml(s.dataset)}">${t('d_show_ds')}</button>
+        <button class="btn" data-zoom-ds="${escapeHtml(s.dataset)}">${t('d_zoom')}</button>
+      </div>
+    </div>
+    <details class="d-advanced">
+      <summary>${t('d_advanced')}</summary>
+      <div class="small muted">${t('d_cmd_list')}</div>
+      ${copyBlock(`zfs list -t snapshot -o name,used,written,refer,creation -s creation -r ${s.dataset}`)}
+      ${diffCommands(s, ds, prev, next)}
+    </details>`;
   $('#details').hidden = false;
 }
 
@@ -731,12 +743,12 @@ function showSharedDetails(ds) {
       <dt>${t('col_unique')}</dt><dd>${fmtBytes(ds.snapUsed)}</dd>
     </dl>
     <p class="note">${t('shared_desc')}</p>
-    ${ds.snaps.length > 1 ? copyBlock(`zfs destroy -nv ${ds.name}@${oldestOf(ds).name}%${newestOf(ds).name}`) : ''}`;
+    <div class="d-actions-row">
+      <button class="btn" data-show-ds="${escapeHtml(ds.name)}">${t('d_show_ds')}</button>
+    </div>`;
   $('#details').hidden = false;
 }
 
-const oldestOf = ds => ds.snaps.reduce((o, s) => ((s.creation ?? 0) < (o.creation ?? 0) ? s : o));
-const newestOf = ds => ds.snaps.reduce((o, s) => ((s.creation ?? 0) > (o.creation ?? 0) ? s : o));
 
 /* ======================= tooltip ======================= */
 
@@ -839,17 +851,41 @@ function openDeleteDialog(ids) {
     newest.length ? `<div class="del-warn">${escapeHtml(t('del_newest', { n: newest.length }))}</div>` : '',
   ].join('');
   $('#del-confirm-wrap').hidden = !todo.length;
-  $('#del-confirm-label').textContent = t('del_confirm', { n: todo.length });
-  $('#del-confirm').value = '';
+  $('#del-confirm-label').textContent = todo.length === 1 ? t('del_confirm_one') : t('del_confirm', { n: fmtNum(todo.length) });
+  $('#del-confirm').checked = false;
   $('#del-confirm').disabled = false;
+  disarmDelete();
   $('#del-result').textContent = '';
   $('#del-go').hidden = !todo.length;
   $('#del-go').disabled = true;
-  $('#del-go').textContent = t('del_go');
   $('#del-cancel').textContent = t('cancel');
   $('#del-cancel').disabled = false;
   $('#delete-dialog').showModal();
   if (todo.length) $('#del-confirm').focus();
+}
+
+/* Second confirmation: the first click arms the button for a few seconds, the second one deletes. */
+const ARM_SECONDS = 5;
+let armTimer = 0;
+
+function disarmDelete() {
+  clearTimeout(armTimer);
+  deleteState.armed = false;
+  $('#del-go').classList.remove('armed');
+  $('#del-go').textContent = t('del_go');
+}
+
+function onDeleteClick() {
+  if (deleteState.running || deleteState.done || !$('#del-confirm').checked) return;
+  if (!deleteState.armed) {
+    deleteState.armed = true;
+    $('#del-go').classList.add('armed');
+    $('#del-go').textContent = t('del_go_armed');
+    armTimer = setTimeout(disarmDelete, ARM_SECONDS * 1000);
+    return;
+  }
+  disarmDelete();
+  runDelete();
 }
 
 async function runDelete() {
@@ -1232,10 +1268,12 @@ function init() {
   });
 
   // delete dialog
-  $('#del-confirm').addEventListener('input', () => {
-    $('#del-go').disabled = $('#del-confirm').value.trim() !== String(deleteState.ids.length);
+  $('#del-confirm').addEventListener('change', () => {
+    $('#del-go').disabled = !$('#del-confirm').checked;
+    disarmDelete();
   });
-  $('#del-go').addEventListener('click', e => { e.preventDefault(); runDelete(); });
+  $('#del-go').addEventListener('click', e => { e.preventDefault(); onDeleteClick(); });
+  $('#delete-dialog').addEventListener('close', disarmDelete);
   updateSelectionUI();
   load(false);
 }
