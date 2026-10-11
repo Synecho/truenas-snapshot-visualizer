@@ -4,12 +4,17 @@
 
 {% do c1.set_user(values.run_as.user, values.run_as.group) %}
 {% do c1.set_read_only(true) %}
-{% do c1.healthcheck.set_test("wget", {"port": values.network.web_port.port_number, "path": "/healthz", "busybox": true}) %}
+{# python healthcheck: works for http and https (busybox wget has no TLS) #}
+{% do c1.healthcheck.set_custom_test(["CMD", "python", "-m", "snapviz.healthcheck"]) %}
 
 {% do c1.add_extra_host("host.docker.internal", "host-gateway") %}
 
 {% do c1.environment.add_env("SNAPVIZ_PORT", values.network.web_port.port_number) %}
 {% do c1.environment.add_env("SNAPVIZ_SOURCE", values.snapshot_visualizer.source) %}
+{% do c1.environment.add_env("SNAPVIZ_TLS", "auto" if values.snapshot_visualizer.https else "off") %}
+{% if values.snapshot_visualizer.password %}
+  {% do c1.environment.add_env("SNAPVIZ_PASSWORD", values.snapshot_visualizer.password) %}
+{% endif %}
 {% do c1.environment.add_env("SNAPVIZ_CACHE_SECONDS", values.snapshot_visualizer.cache_minutes * 60) %}
 {% do c1.environment.add_env("SNAPVIZ_ALLOW_IMPORT", values.snapshot_visualizer.allow_import) %}
 {% do c1.environment.add_env("SNAPVIZ_ALLOW_DELETE", values.snapshot_visualizer.allow_delete) %}
@@ -22,6 +27,6 @@
 
 {% do c1.add_port(values.network.web_port) %}
 
-{% do tpl.portals.add(values.network.web_port) %}
+{% do tpl.portals.add(values.network.web_port, {"scheme": "https" if values.snapshot_visualizer.https else "http"}) %}
 
 {{ tpl.render() | tojson }}

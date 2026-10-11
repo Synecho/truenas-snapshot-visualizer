@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 from aiohttp import web
 
 from . import __version__
+from .auth import auth_middleware, setup_auth
 from .model import SnapshotReport
 from .sources.zfs_cli import parse_listing
 
@@ -195,6 +196,8 @@ async def handle_status(request: web.Request) -> web.Response:
             "allow_import": request.app["allow_import"],
             "allow_delete": delete_enabled(request.app),
             "delete_supported": hasattr(cache.source, "delete"),
+            "auth_enabled": request.app.get("auth") is not None,
+            "https": request.secure,
             "last_fetch": cache.report.fetched_at if cache.report else None,
             "last_error": cache.error,
         }
@@ -225,7 +228,9 @@ async def security_headers(request: web.Request, handler):
 
 
 def create_app() -> web.Application:
-    app = web.Application(middlewares=[security_headers], client_max_size=MAX_IMPORT_BYTES)
+    app = web.Application(middlewares=[security_headers, auth_middleware], client_max_size=MAX_IMPORT_BYTES)
+    app["static_dir"] = STATIC_DIR
+    setup_auth(app)
     source = make_source()
     app["cache"] = Cache(source, ttl=int(os.environ.get("SNAPVIZ_CACHE_SECONDS", "300")))
     app["allow_import"] = _env_bool("SNAPVIZ_ALLOW_IMPORT", True)
@@ -233,6 +238,8 @@ def create_app() -> web.Application:
     app["allow_delete"] = _env_bool("SNAPVIZ_ALLOW_DELETE", False)
     if app["allow_delete"]:
         log.warning("Deleting snapshots via the web UI is ENABLED (SNAPVIZ_ALLOW_DELETE)")
+        if app["auth"] is None:
+            log.warning("No SNAPVIZ_PASSWORD set: everyone who can reach the web UI can delete snapshots")
 
     app.router.add_get("/", handle_index)
     app.router.add_get("/api/snapshots", handle_snapshots)
@@ -267,8 +274,12 @@ def main() -> None:
     )
     host = os.environ.get("SNAPVIZ_HOST", "0.0.0.0")
     port = int(os.environ.get("SNAPVIZ_PORT", "8080"))
-    log.info("TrueNAS Snapshot Visualizer %s listening on %s:%d", __version__, host, port)
-    web.run_app(create_app(), host=host, port=port, access_log=None, print=None)
+    from .tls import build_ssl_context
+
+    ssl_context = build_ssl_context()
+    scheme = "https" if ssl_context else "http"
+    log.info("TrueNAS Snapshot Visualizer %s listening on %s://%s:%d", __version__, scheme, host, port)
+    web.run_app(create_app(), host=host, port=port, ssl_context=ssl_context, access_log=None, print=None)
 
 
 if __name__ == "__main__":

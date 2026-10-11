@@ -15,11 +15,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY snapviz ./snapviz
 COPY static ./static
 
-# TrueNAS "apps" user; the app needs no write access anywhere
+# TrueNAS "apps" user; the app needs no write access (optional SNAPVIZ_DATA_DIR keeps the certificate)
 USER 568:568
 EXPOSE 8080
 
+# python instead of busybox wget, which cannot do https
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
-  CMD wget -q --spider "http://127.0.0.1:${SNAPVIZ_PORT}/healthz" || exit 1
+  CMD ["python", "-m", "snapviz.healthcheck"]
 
 CMD ["python", "-m", "snapviz"]

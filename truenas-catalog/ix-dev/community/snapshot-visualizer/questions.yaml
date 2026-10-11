@@ -87,11 +87,29 @@ questions:
           schema:
             type: boolean
             default: true
+        - variable: https
+          label: Use HTTPS
+          description: |
+            Serve the web UI over HTTPS with an automatically generated self-signed certificate.</br>
+            Your browser shows a certificate warning once (like for the TrueNAS web interface).</br>
+            The certificate is regenerated when the app restarts.
+          schema:
+            type: boolean
+            default: true
+        - variable: password
+          label: Web UI Password
+          description: |
+            Password required to open the web UI. Leave empty to allow access without login.</br>
+            Strongly recommended when deleting snapshots is allowed.
+          schema:
+            type: string
+            default: ""
+            private: true
         - variable: allow_delete
           label: Allow Deleting Snapshots
           description: |
             Allow selecting and deleting snapshots in the web UI (with a confirmation dialog).</br>
-            The web UI has no login of its own: anyone who can reach it can delete snapshots.</br>
+            Without a Web UI Password anyone who can reach the web UI can delete snapshots.</br>
             The API key's user needs the SNAPSHOT_DELETE role (e.g. Full Admin); Read-Only Administrator can only view.
           schema:
             type: boolean

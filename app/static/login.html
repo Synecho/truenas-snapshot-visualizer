@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Snapshot Visualizer – Login</title>
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/style.css">
+  <script type="module" src="/static/js/login.js"></script>
+</head>
+<body class="login-body">
+  <form class="login-card" method="post" action="/login">
+    <div class="brand">
+      <img src="/static/icon.svg" alt="" width="32" height="32">
+      <span data-i18n="title">Snapshot Visualizer</span>
+    </div>
+    <label>
+      <span data-i18n="login_password">Password</span>
+      <input type="password" name="password" autocomplete="current-password" required autofocus>
+    </label>
+    <input type="hidden" name="next" id="login-next" value="/">
+    <div class="login-error" id="login-error" hidden></div>
+    <button class="btn btn-primary" type="submit" data-i18n="login_submit">Log in</button>
+  </form>
+</body>
+</html>

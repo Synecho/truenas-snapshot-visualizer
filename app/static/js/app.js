@@ -18,7 +18,7 @@ const state = {
   zoom: null,          // dataset name the treemap is zoomed into
   selected: null,      // snapshot id shown in the details panel
   selection: new Set(), // snapshot ids picked for deletion
-  caps: { allow_delete: false, delete_supported: false },
+  caps: { allow_delete: false, delete_supported: false, auth_enabled: false },
   sort: { key: 'used', dir: -1 },
   dsSort: { key: 'usedbysnapshots', dir: -1 },
   now: Date.now() / 1000,
@@ -49,6 +49,7 @@ async function load(force = false) {
   btn.classList.add('spinning');
   try {
     const res = await fetch('/api/snapshots' + (force ? '?refresh=1' : ''));
+    if (res.status === 401) { location.href = '/login'; return; }
     const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
     if (!res.ok || body.error) throw new Error(body.error || `HTTP ${res.status}`);
     state.imported = false;
@@ -775,7 +776,8 @@ function updateSelectionUI() {
   $('#mi-clear').disabled = !n;
   $('#mi-delete').textContent = t('sel_delete', { n: fmtNum(n) });
   $('#mi-delete').disabled = !n || !!blocked;
-  $('#edit-note').textContent = blocked || (n ? '' : t('sel_hint'));
+  const noLogin = !blocked && !state.caps.auth_enabled ? t('del_no_login') : '';
+  $('#edit-note').textContent = blocked || [n ? '' : t('sel_hint'), noLogin].filter(Boolean).join(' ');
 
   $('#selbar').hidden = !n;
   $('#sel-info').textContent = t('sel_info', { n: fmtNum(n), size: fmtBytes(size) });
@@ -841,6 +843,7 @@ async function runDelete() {
       headers: { 'Content-Type': 'application/json', 'X-Snapviz-Action': 'delete' },
       body: JSON.stringify({ snapshots: deleteState.ids }),
     });
+    if (res.status === 401) { location.href = '/login'; return; }
     body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
     if (!res.ok || body.error) throw new Error(body.error || `HTTP ${res.status}`);
   } catch (err) {
@@ -934,6 +937,10 @@ function init() {
   });
 
   $('#btn-refresh').addEventListener('click', () => load(true));
+  $('#btn-logout').addEventListener('click', async () => {
+    await fetch('/logout', { method: 'POST' }).catch(() => {});
+    location.href = '/login';
+  });
   $('#lang-select').addEventListener('change', e => {
     setLang(e.target.value);
     if (state.raw) { fillDatasetSelect(); updateHeader(); applyFilters(); }
@@ -1029,7 +1036,8 @@ function init() {
 
   fetch('/api/status').then(r => r.json()).then(st => {
     $('#btn-import').hidden = !st.allow_import;
-    state.caps = { allow_delete: !!st.allow_delete, delete_supported: !!st.delete_supported };
+    state.caps = { allow_delete: !!st.allow_delete, delete_supported: !!st.delete_supported, auth_enabled: !!st.auth_enabled };
+    $('#btn-logout').hidden = !st.auth_enabled;
     updateSelectionUI();
   }).catch(() => {});
 

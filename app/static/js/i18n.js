@@ -128,6 +128,12 @@ const STRINGS = {
     del_none: 'Nothing to delete: all selected snapshots have a hold.',
     close: 'Close',
     copy_manual: 'Selected – press Ctrl+C',
+    login_password: 'Password',
+    login_submit: 'Log in',
+    login_error: 'Wrong password.',
+    login_locked: 'Too many failed attempts. Please wait 10 minutes.',
+    logout: 'Log out',
+    del_no_login: 'Warning: no password is set (SNAPVIZ_PASSWORD) - everyone who can reach this page can delete snapshots.',
   },
   de: {
     title: 'Snapshot Visualizer',
@@ -258,6 +264,12 @@ const STRINGS = {
     del_none: 'Nichts zu löschen: Alle ausgewählten Snapshots haben einen Hold.',
     close: 'Schließen',
     copy_manual: 'Markiert – Strg+C drücken',
+    login_password: 'Passwort',
+    login_submit: 'Anmelden',
+    login_error: 'Falsches Passwort.',
+    login_locked: 'Zu viele Fehlversuche. Bitte 10 Minuten warten.',
+    logout: 'Abmelden',
+    del_no_login: 'Achtung: Kein Passwort gesetzt (SNAPVIZ_PASSWORD) – jeder, der diese Seite erreicht, kann Snapshots löschen.',
   },
 };
 

@@ -48,22 +48,42 @@ services:
       - "30527:8080"
     volumes:
       - /var/run/middleware:/run/middleware:ro
+    environment:
+      SNAPVIZ_PASSWORD: "<choose a password>"
 ```
 
-Then open `http://<your-truenas>:30527`.
+Then open `https://<your-truenas>:30527` and confirm the certificate warning once (the app uses a self-signed
+certificate, like the TrueNAS web interface).
 
 The app talks to the TrueNAS middleware through its local socket `/var/run/middleware/middlewared.sock`.
 TrueNAS authenticates socket connections by the caller's UID, so no key or password is involved:
 
 - `user: "0:0"` (above) – zero configuration. The container gets **full admin rights** on the TrueNAS API.
-  The app only runs read-only queries, but a vulnerability in it would expose your whole NAS, and the app's
-  web UI has no login of its own.
+  The app only runs read-only queries (unless deleting is enabled), but a vulnerability in it would expose
+  your whole NAS – so set a password.
 - **Read-only (recommended)** – create a user in a group with the *Read-Only Administrator* privilege
   (see below, steps 1–2, no key needed), look up its UID under *Credentials → Users* and use
   `user: "<uid>:<uid>"` instead. The container can then only read.
 
 The official app catalog does not allow apps to mount `/var/run/middleware`, so the catalog version of the
 app uses an API key instead.
+
+### HTTPS and login
+
+- **HTTPS is on by default** (`SNAPVIZ_TLS=auto`) with a self-signed certificate that is generated at start.
+  Without storage it changes on every restart, so the browser warns again. To keep it, mount a writable
+  directory and set `SNAPVIZ_DATA_DIR` (it also keeps logins across restarts):
+  ```yaml
+      volumes:
+        - /mnt/<pool>/apps/snapviz:/data
+      environment:
+        SNAPVIZ_DATA_DIR: /data
+  ```
+  Own certificate: `SNAPVIZ_TLS_CERT` / `SNAPVIZ_TLS_KEY` (PEM files mounted into the container).
+  Behind a reverse proxy that already does TLS: `SNAPVIZ_TLS: "off"`.
+- **Login:** set `SNAPVIZ_PASSWORD` and the web UI asks for it. Sessions are signed cookies
+  (HttpOnly, SameSite=Strict, Secure) valid for 30 days; 10 failed attempts lock an IP for 10 minutes.
+  Without a password the UI is open to everyone who can reach it.
 
 ### Deleting snapshots from the UI (optional)
 
@@ -81,8 +101,7 @@ minimum space that will be freed, skips snapshots with a `zfs hold`, warns about
 
 - Deleting needs the TrueNAS role `SNAPSHOT_DELETE`: works with `user: "0:0"` on the socket or with a Full Admin
   API key, **not** with a Read-Only Administrator.
-- The app's web UI has **no login**: everyone who can reach it can delete snapshots once this is enabled.
-  Only enable it on a trusted network or behind a reverse proxy with authentication.
+- **Set `SNAPVIZ_PASSWORD`** – otherwise everyone who can reach the web UI can delete snapshots.
 - Cross-site requests are rejected (custom header + origin check), only snapshot names (`pool/ds@snap`) that are
   part of the loaded data are accepted, and every deletion is logged in the app log.
 
@@ -139,6 +158,10 @@ the app refuses to send the key. Keep *Verify TLS Certificate* off for the defau
 | `SNAPVIZ_ALLOW_DELETE` | `false` | Allow deleting snapshots in the UI (see above) |
 | `SNAPVIZ_EXCLUDE_DATASETS` | `*/.system*,*/.ix-apps/docker*,*/ix-applications/docker*,*/ix-applications/k3s*` | Comma-separated globs (`*`, `?`, full dataset name) for TrueNAS internals. Matching datasets are hidden while *hide system datasets* is on (default); empty = hide nothing |
 | `SNAPVIZ_PORT` | `8080` | Port the web server listens on |
+| `SNAPVIZ_TLS` | `auto` | `auto` = HTTPS with self-signed certificate, `off` = plain HTTP |
+| `SNAPVIZ_TLS_CERT` / `SNAPVIZ_TLS_KEY` | – | Own certificate and key (PEM) |
+| `SNAPVIZ_PASSWORD` | – | Password for the web UI; empty = no login |
+| `SNAPVIZ_DATA_DIR` | – | Writable directory to keep the certificate and session key |
 | `SNAPVIZ_LOG_LEVEL` | `INFO` | Python log level |
 
 ### Without TrueNAS: import `zfs list` output
