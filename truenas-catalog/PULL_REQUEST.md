@@ -18,7 +18,7 @@ Snapshot Visualizer shows the ZFS snapshots of the TrueNAS system the way WinDir
 
 - **Upstream**: https://github.com/Synecho/truenas-snapshot-visualizer
 - **Documentation**: https://github.com/Synecho/truenas-snapshot-visualizer#readme
-- **App Version**: 1.4.0
+- **App Version**: 1.4.1
 
 ## Testing
 
