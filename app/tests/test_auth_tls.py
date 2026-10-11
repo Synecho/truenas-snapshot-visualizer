@@ -43,6 +43,11 @@ async def test_login_flow(login_client):
     status = await (await c.get("/api/status")).json()
     assert status["auth_enabled"] is True
 
+    # a shared link's hash survives the login
+    link = "/#snapshots?ds=tank/vm&snap=tank/vm@auto-1"
+    r = await c.post("/login", data={"password": "s3cret", "next": link}, allow_redirects=False)
+    assert r.status == 302 and r.headers["Location"] == link
+
     r = await c.post("/logout", allow_redirects=False)
     assert r.status == 302
     assert (await c.get("/api/snapshots")).status == 401

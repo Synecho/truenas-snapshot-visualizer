@@ -30,8 +30,10 @@ const state = {
 const filters = { search: '', dataset: '', age: '', minsize: 0, metric: 'used', color: 'age' };
 
 const HIDE_KEY = 'snapviz.hideSystem';
-let hideSystem = true;
-try { hideSystem = localStorage.getItem(HIDE_KEY) !== '0'; } catch { /* ignore */ }
+function storedHideSystem() {
+  try { return localStorage.getItem(HIDE_KEY) !== '0'; } catch { return true; }
+}
+let hideSystem = storedHideSystem();
 
 /** Glob (`*`, `?`, matched against the full dataset name) -> predicate. */
 function excludeMatcher(patterns) {
@@ -131,6 +133,7 @@ function ingest(body) {
   updateHeader();
   $('#loading').hidden = true;
   applyFilters();
+  resolvePendingSnap();
 }
 
 function updateHeader() {
@@ -266,7 +269,7 @@ function renderView() {
     $(`#view-${v}`).hidden = v !== state.view || !state.raw;
   }
   document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('active', b.dataset.view === state.view));
-  if (location.hash.slice(1) !== state.view) history.replaceState(null, '', '#' + state.view);
+  syncHash();
   if (!state.raw) return;
   ({ overview: renderOverview, treemap: renderTreemap, timeline: renderTimeline, datasets: renderDatasets, snapshots: renderSnapshots })[state.view]();
 }
@@ -626,8 +629,19 @@ function exportCsv() {
 
 /* ======================= details panel ======================= */
 
+function clearSelection() {
+  $('#details').hidden = true;
+  state.selected = null;
+  state.pendingSnap = null;
+  treemap?.setSelected(null);
+  timeline?.setSelected(null);
+  if (state.view === 'snapshots') drawSnapRows(true);
+}
+
 function select(s) {
   state.selected = s.id;
+  state.pendingSnap = null;
+  syncHash();
   showDetails(s);
   treemap?.setSelected(s.id);
   timeline?.setSelected(s.id);
@@ -876,6 +890,75 @@ async function runDelete() {
   load(true);
 }
 
+/* ======================= shareable URL ======================= */
+// The hash holds view + filters + zoom + selection, e.g. #treemap?ds=tank/vm&age=gt:90&snap=tank/vm@auto-1
+// Defaults are omitted so plain links stay short. replaceState keeps the browser history clean.
+
+const VIEWS = ['overview', 'treemap', 'timeline', 'datasets', 'snapshots'];
+
+function stateToHash() {
+  const p = new URLSearchParams();
+  if (filters.search) p.set('q', filters.search);
+  if (filters.dataset) p.set('ds', filters.dataset);
+  if (filters.age) p.set('age', filters.age);
+  if (+filters.minsize) p.set('min', filters.minsize);
+  if (filters.metric !== 'used') p.set('m', filters.metric);
+  if (filters.color !== 'age') p.set('c', filters.color);
+  if (state.zoom) p.set('zoom', state.zoom);
+  if ($('#tl-log').checked) p.set('log', '1');
+  if (!hideSystem) p.set('sys', '0');
+  const snap = state.selected || state.pendingSnap;
+  if (snap) p.set('snap', snap);
+  // '/', '@' and ':' are legal in a fragment; keep dataset and snapshot names readable
+  const qs = p.toString().replace(/%2F/g, '/').replace(/%40/g, '@').replace(/%3A/g, ':');
+  return '#' + state.view + (qs ? '?' + qs : '');
+}
+
+function syncHash() {
+  const h = stateToHash();
+  if (location.hash !== h) history.replaceState(null, '', h);
+}
+
+function setSelect(id, value, fallback) {
+  const el = $(id);
+  el.value = value ?? fallback;
+  if (el.value !== (value ?? fallback)) el.value = fallback; // unknown value in a pasted link
+}
+
+/** Apply the hash to view, form controls and state. Returns true if it carried filter parameters. */
+function applyHash() {
+  const raw = location.hash.slice(1);
+  const q = raw.indexOf('?');
+  const view = q < 0 ? raw : raw.slice(0, q);
+  if (VIEWS.includes(view)) state.view = view;
+  if (q < 0) return false;
+  const p = new URLSearchParams(raw.slice(q + 1));
+  $('#f-search').value = p.get('q') ?? '';
+  setSelect('#f-age', p.get('age'), '');
+  setSelect('#f-minsize', p.get('min'), '0');
+  setSelect('#f-metric', p.get('m'), 'used');
+  setSelect('#f-color', p.get('c'), 'age');
+  filters.dataset = p.get('ds') ?? '';
+  $('#f-dataset').value = filters.dataset;
+  state.zoom = p.get('zoom');
+  $('#tl-log').checked = p.get('log') === '1';
+  // sys=0 in a shared link shows system datasets for this page only; without it the stored preference applies
+  hideSystem = p.get('sys') === '0' ? false : storedHideSystem();
+  $('#f-hide-system').checked = hideSystem;
+  const snap = p.get('snap');
+  if (snap !== state.selected) clearSelection();
+  state.pendingSnap = snap === state.selected ? null : snap;
+  return true;
+}
+
+/** Open the snapshot named in the URL once the data is there. */
+function resolvePendingSnap() {
+  if (!state.pendingSnap) return;
+  const s = state.snaps.find(x => x.id === state.pendingSnap);
+  if (s) select(s);
+  else { state.pendingSnap = null; syncHash(); } // deleted, or hidden as a system dataset
+}
+
 /* ======================= wiring ======================= */
 
 function setDatasetFilter(name) {
@@ -895,13 +978,6 @@ function init() {
   $('#lang-select').value = getLang();
   applyStatic();
 
-  const VIEWS = ['overview', 'treemap', 'timeline', 'datasets', 'snapshots'];
-  const fromHash = () => {
-    const v = location.hash.slice(1);
-    if (VIEWS.includes(v) && v !== state.view) { state.view = v; renderView(); }
-  };
-  if (VIEWS.includes(location.hash.slice(1))) state.view = location.hash.slice(1);
-  window.addEventListener('hashchange', fromHash);
   document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => {
     state.view = b.dataset.view;
     renderView();
@@ -914,8 +990,21 @@ function init() {
     filters.metric = $('#f-metric').value;
     filters.color = $('#f-color').value;
   };
-  // browsers restore <select> values on reload; adopt them so the UI and the applied filters agree
+  // a link's parameters win; otherwise adopt the <select> values browsers restore on reload,
+  // so the UI and the applied filters agree
+  applyHash();
   readFilters();
+  window.addEventListener('hashchange', () => {
+    if (location.hash === stateToHash()) return;
+    const hadSys = hideSystem;
+    applyHash();
+    readFilters();
+    if (!state.raw) return;
+    if (hideSystem !== hadSys) { ingest(state.raw); return; }
+    fillDatasetSelect();
+    applyFilters();
+    resolvePendingSnap();
+  });
   const onFilter = () => { readFilters(); applyFilters(); };
   $('#f-search').addEventListener('input', debounce(onFilter, 200));
   for (const id of ['#f-age', '#f-minsize', '#f-metric', '#f-color']) $(id).addEventListener('change', onFilter);
@@ -1004,13 +1093,7 @@ function init() {
   $('#sn-body').addEventListener('scroll', () => drawSnapRows(false), { passive: true });
   new ResizeObserver(() => state.view === 'snapshots' && drawSnapRows(true)).observe($('#sn-body'));
   $('#sn-export').addEventListener('click', exportCsv);
-  $('#details-close').addEventListener('click', () => {
-    $('#details').hidden = true;
-    state.selected = null;
-    treemap?.setSelected(null);
-    timeline?.setSelected(null);
-    if (state.view === 'snapshots') drawSnapRows(true);
-  });
+  $('#details-close').addEventListener('click', () => { clearSelection(); syncHash(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') $('#details-close').click(); });
 
   // import dialog

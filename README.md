@@ -19,7 +19,10 @@ read-only through the TrueNAS API and shows them as:
 - **Snapshots** – sortable, filterable, virtualised table for tens of thousands of snapshots, CSV export.
 
 Filters (name / regex, dataset, age, minimum size), size metric (`used`, `written`, `referenced`) and color mode
-apply to every view. The details panel shows ready-to-copy `zfs` commands, deletion only as a dry run
+apply to every view.
+The address bar always holds the current view, filters, treemap zoom and selected snapshot, so you can
+bookmark a view or send it as a link.
+The details panel shows ready-to-copy `zfs` commands, deletion only as a dry run
 (`zfs destroy -nv`). By default the app is read-only; deleting snapshots from the UI is an opt-in feature (`SNAPVIZ_ALLOW_DELETE`).
 
 UI languages: English, German.
