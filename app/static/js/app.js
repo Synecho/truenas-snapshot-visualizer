@@ -19,7 +19,7 @@ const state = {
   zoom: null,          // dataset name the treemap is zoomed into
   selected: null,      // snapshot id shown in the details panel
   selection: new Set(), // snapshot ids picked for deletion
-  caps: { allow_delete: false, delete_supported: false, auth_enabled: false },
+  caps: { allow_delete: false, delete_supported: false, auth_enabled: false, delete_mode: 'ui' },
   sort: { key: 'used', dir: -1 },
   dsSort: { key: 'usedbysnapshots', dir: -1 },
   now: Date.now() / 1000,
@@ -29,6 +29,12 @@ const state = {
 };
 
 const filters = { search: '', dataset: '', age: '', minsize: 0, metric: 'used', color: 'age' };
+
+const DELETE_KEY = 'snapviz.allowDelete';
+function storedAllowDelete() {
+  try { return localStorage.getItem(DELETE_KEY) === '1'; } catch { return false; }
+}
+let uiAllowDelete = storedAllowDelete();
 
 const HIDE_KEY = 'snapviz.hideSystem';
 function storedHideSystem() {
@@ -73,6 +79,7 @@ function ingest(body) {
   const f = body.snapshot_fields;
   const idx = Object.fromEntries(f.map((k, i) => [k, i]));
   const system = excludeMatcher(body.exclude_patterns);
+  const managedBy = Object.entries(body.managed_patterns ?? {}).map(([reason, p]) => [reason, excludeMatcher(p)]);
   const hidden = hideSystem ? system : () => false;
   state.datasets = new Map();
   for (const d of body.datasets) {
@@ -95,6 +102,7 @@ function ingest(body) {
     s.pool = s.dataset.split('/')[0];
     s.age = s.creation != null ? state.now - s.creation : null;
     s.schema = schemaOf(s.name);
+    s.managed = managedBy.find(([, m]) => m(s.dataset))?.[0] ?? null;
     s.lower = s.id.toLowerCase();
     let ds = state.datasets.get(s.dataset);
     if (!ds) {
@@ -592,9 +600,9 @@ function drawSnapRows(force) {
     const s = snRows[i];
     const picked = state.selection.has(s.id);
     html += `<div class="vrow${s.id === state.selected ? ' selected' : ''}${picked ? ' marked' : ''}" style="top:${i * ROW_H}px" data-i="${i}">
-      <div class="cb"><input type="checkbox" data-pick="${i}"${picked ? ' checked' : ''} aria-label="${escapeHtml(t('d_select'))}"></div>
+      <div class="cb"><input type="checkbox" data-pick="${i}"${picked ? ' checked' : ''}${s.managed ? ` disabled title="${escapeHtml(t('m_' + s.managed))}"` : ''} aria-label="${escapeHtml(t('d_select'))}"></div>
       <div title="${escapeHtml(s.dataset)}">${escapeHtml(s.dataset)}</div>
-      <div title="${escapeHtml(s.name)}"><span class="age-dot" style="background:${rgb(colorOf(s))}"></span>${escapeHtml(s.name)}</div>
+      <div title="${escapeHtml(s.managed ? t('m_' + s.managed) : s.name)}"><span class="age-dot" style="background:${rgb(colorOf(s))}"></span>${s.managed ? '<span class="lock" aria-hidden="true">🔒</span>' : ''}${escapeHtml(s.name)}</div>
       <div class="num">${escapeHtml(fmtDate(s.creation))}</div>
       <div class="num">${fmtAge(s.age)}</div>
       <div class="num">${fmtBytes(s.used)}</div>
@@ -693,7 +701,8 @@ function showDetails(s) {
   const neighbours = ds ? [...ds.snaps].sort((a, b) => (a.creation ?? 0) - (b.creation ?? 0)) : [];
   const i = neighbours.indexOf(s);
   const prev = neighbours[i - 1], next = neighbours[i + 1];
-  const blocked = s.holds > 0 ? t('d_held_block') : deleteBlockedReason();
+  const blocked = s.managed ? t('m_' + s.managed) : s.holds > 0 ? t('d_held_block') : deleteBlockedReason();
+  const canOpenSettings = !s.managed && !(s.holds > 0) && deleteSwitchedOff();
   $('#details-body').innerHTML = `
     <h4>${escapeHtml(s.name)}</h4>
     <div class="sub">${escapeHtml(s.dataset)}</div>
@@ -717,7 +726,7 @@ function showDetails(s) {
     </dl>
     <div class="d-actions">
       <button class="btn btn-danger d-delete" data-delete-id="${escapeHtml(s.id)}"${blocked ? ' disabled' : ''}>${t('d_delete_btn')}</button>
-      ${blocked ? `<div class="d-blocked">${escapeHtml(blocked)}</div>` : ''}
+      ${blocked ? `<div class="d-blocked">${escapeHtml(blocked)}${canOpenSettings ? ` <button class="linklike" data-act="settings">${t('d_open_settings')}</button>` : ''}</div>` : ''}
       <div class="d-actions-row">
         <button class="btn" data-pick-id="${escapeHtml(s.id)}">${state.selection.has(s.id) ? t('d_unselect') : t('d_select')}</button>
         <button class="btn" data-show-ds="${escapeHtml(s.dataset)}">${t('d_show_ds')}</button>
@@ -771,12 +780,43 @@ function hideTooltip() { $('#tooltip').hidden = true; }
 function deleteBlockedReason() {
   if (state.imported) return t('del_imported');
   if (!state.caps.delete_supported) return t('del_unsupported');
-  if (!state.caps.allow_delete) return t('del_disabled');
+  if (state.caps.delete_mode === 'off') return t('del_locked');
+  if (deleteSwitchedOff()) return t('del_disabled');
   return null;
 }
 
+/** Deleting can be switched on per browser in the settings (unless the admin forces it on/off). */
+function deleteSwitchedOff() {
+  return state.caps.delete_mode === 'ui' && !uiAllowDelete;
+}
+
+function openSettings() {
+  const box = $('#set-delete');
+  const mode = state.caps.delete_mode;
+  box.checked = mode === 'on' || (mode === 'ui' && uiAllowDelete);
+  box.disabled = mode !== 'ui' || !state.caps.delete_supported;
+  const notes = [];
+  if (!state.caps.delete_supported) notes.push(t('set_delete_unsupported'));
+  else if (mode === 'off') notes.push(t('set_delete_locked'));
+  else if (mode === 'on') notes.push(t('set_delete_forced'));
+  if (state.caps.delete_supported && mode !== 'off' && !state.caps.auth_enabled) notes.push(t('set_no_password'));
+  $('#set-delete-note').textContent = notes.join(' ');
+  $('#set-delete-note').classList.toggle('warn', !state.caps.auth_enabled && mode !== 'off');
+  $('#settings-dialog').showModal();
+}
+
+function setUiAllowDelete(on) {
+  uiAllowDelete = on;
+  try { localStorage.setItem(DELETE_KEY, on ? '1' : '0'); } catch { /* ignore */ }
+  updateSelectionUI();
+  const cur = state.selected && state.snaps.find(x => x.id === state.selected);
+  if (cur && !$('#details').hidden) showDetails(cur);
+}
+
 function setSelection(next) {
-  state.selection = next;
+  // snapshots managed by TrueNAS can never be picked for deletion
+  const managed = new Set(state.snaps.filter(s => s.managed).map(s => s.id));
+  state.selection = new Set([...next].filter(id => !managed.has(id)));
   updateSelectionUI();
 }
 
@@ -830,8 +870,9 @@ function openDeleteDialog(ids) {
   if (deleteBlockedReason()) return;
   const byId = new Map(state.snaps.map(s => [s.id, s]));
   const snaps = ids.map(id => byId.get(id)).filter(Boolean);
-  const held = snaps.filter(s => s.holds > 0);
-  const todo = snaps.filter(s => !(s.holds > 0));
+  const managed = snaps.filter(s => s.managed);
+  const held = snaps.filter(s => !s.managed && s.holds > 0);
+  const todo = snaps.filter(s => !s.managed && !(s.holds > 0));
   const newest = todo.filter(s => {
     const ds = state.datasets.get(s.dataset);
     return ds?.snaps.every(o => (o.creation ?? 0) <= (s.creation ?? 0));
@@ -844,9 +885,10 @@ function openDeleteDialog(ids) {
     : t('del_none');
   const shown = snaps.slice(0, 200);
   $('#del-list').innerHTML = shown.map(s =>
-    `<li data-id="${escapeHtml(s.id)}" class="${s.holds > 0 ? 'skip' : ''}">${escapeHtml(s.id)} <span class="muted">· ${fmtBytes(s.used)} · ${fmtAge(s.age)}</span></li>`).join('')
+    `<li data-id="${escapeHtml(s.id)}" class="${s.managed || s.holds > 0 ? 'skip' : ''}">${escapeHtml(s.id)} <span class="muted">· ${fmtBytes(s.used)} · ${fmtAge(s.age)}</span></li>`).join('')
     + (snaps.length > shown.length ? `<li class="muted">${escapeHtml(t('del_more', { n: fmtNum(snaps.length - shown.length) }))}</li>` : '');
   $('#del-warnings').innerHTML = [
+    managed.length ? `<div class="del-warn">${escapeHtml(t('del_managed', { n: managed.length }))}</div>` : '',
     held.length ? `<div class="del-warn">${escapeHtml(t('del_held', { n: held.length }))}</div>` : '',
     newest.length ? `<div class="del-warn">${escapeHtml(t('del_newest', { n: newest.length }))}</div>` : '',
   ].join('');
@@ -1166,6 +1208,7 @@ function init() {
       if (tgt.dataset.act === 'select-filtered') setSelection(new Set([...state.selection, ...state.filtered.map(s => s.id)]));
       else if (tgt.dataset.act === 'clear') setSelection(new Set());
       else if (tgt.dataset.act === 'delete') openDeleteDialog([...state.selection]);
+      else if (tgt.dataset.act === 'settings') openSettings();
     } else if (tgt.dataset.pickId != null) {
       toggleSelection([tgt.dataset.pickId]);
       tgt.textContent = state.selection.has(tgt.dataset.pickId) ? t('d_unselect') : t('d_select');
@@ -1241,7 +1284,10 @@ function init() {
 
   fetch('/api/status').then(r => r.json()).then(st => {
     $('#btn-import').hidden = !st.allow_import;
-    state.caps = { allow_delete: !!st.allow_delete, delete_supported: !!st.delete_supported, auth_enabled: !!st.auth_enabled };
+    state.caps = {
+      allow_delete: !!st.allow_delete, delete_supported: !!st.delete_supported,
+      auth_enabled: !!st.auth_enabled, delete_mode: st.delete_mode ?? (st.allow_delete ? 'on' : 'off'),
+    };
     $('#btn-logout').hidden = !st.auth_enabled;
     updateSelectionUI();
   }).catch(() => {});
@@ -1266,6 +1312,10 @@ function init() {
       toggleSelection([snRows[+e.target.dataset.pick].id]);
     }
   });
+
+  // settings
+  $('#btn-settings').addEventListener('click', openSettings);
+  $('#set-delete').addEventListener('change', e => setUiAllowDelete(e.target.checked));
 
   // delete dialog
   $('#del-confirm').addEventListener('change', () => {

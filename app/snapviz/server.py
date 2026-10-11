@@ -14,6 +14,7 @@ from aiohttp import web
 from . import __version__
 from .auth import auth_middleware, setup_auth
 from .model import SnapshotReport
+from .protect import MANAGED_PATTERNS, managed_reason
 from .sources.zfs_cli import parse_listing
 
 log = logging.getLogger("snapviz")
@@ -33,6 +34,17 @@ def _env_bool(name: str, default: bool) -> bool:
 DEFAULT_EXCLUDE = ["*/.system*", "*/.ix-apps/docker*", "*/ix-applications/docker*", "*/ix-applications/k3s*"]
 
 
+def delete_mode() -> str:
+    """SNAPVIZ_ALLOW_DELETE: unset/"ui" = can be switched on in the web UI settings,
+    true = always on, false = locked off by the administrator."""
+    value = os.environ.get("SNAPVIZ_ALLOW_DELETE", "").strip().lower()
+    if value in ("0", "false", "no", "off"):
+        return "off"
+    if value in ("1", "true", "yes", "on"):
+        return "on"
+    return "ui"
+
+
 def _env_list(name: str, default: list[str]) -> list[str]:
     value = os.environ.get(name)
     if value is None:
@@ -43,6 +55,7 @@ def _env_list(name: str, default: list[str]) -> list[str]:
 def _report_json(request: web.Request, report) -> web.StreamResponse:
     body = report.to_json()
     body["exclude_patterns"] = request.app["exclude_patterns"]
+    body["managed_patterns"] = MANAGED_PATTERNS
     resp = web.json_response(body)
     resp.enable_compression()
     return resp
@@ -148,7 +161,7 @@ def _same_origin(request: web.Request) -> bool:
 async def handle_delete(request: web.Request) -> web.Response:
     cache: Cache = request.app["cache"]
     if not delete_enabled(request.app):
-        return _json_error(403, "Deleting snapshots is disabled. Set SNAPVIZ_ALLOW_DELETE=true to enable it.")
+        return _json_error(403, "Deleting snapshots is locked by the administrator (SNAPVIZ_ALLOW_DELETE=false).")
     # A custom header and a JSON body force a CORS preflight, which we never answer -> no CSRF
     if request.headers.get("X-Snapviz-Action") != "delete" or request.content_type != "application/json":
         return _json_error(400, "Missing X-Snapviz-Action header or JSON body")
@@ -170,6 +183,9 @@ async def handle_delete(request: web.Request) -> web.Response:
     unknown = [i for i in ids if "@" not in i or i not in known]
     if unknown:
         return _json_error(400, f"Unknown snapshot(s), reload the data first: {', '.join(unknown[:5])}")
+    managed = [i for i in ids if managed_reason(i.split("@", 1)[0])]
+    if managed:
+        return _json_error(400, f"Snapshot(s) managed by TrueNAS cannot be deleted here: {', '.join(managed[:5])}")
 
     log.info("Deleting %d snapshot(s) on request from %s", len(ids), request.remote)
     try:
@@ -183,7 +199,7 @@ async def handle_delete(request: web.Request) -> web.Response:
 
 
 def delete_enabled(app: web.Application) -> bool:
-    return app["allow_delete"] and hasattr(app["cache"].source, "delete")
+    return app["delete_mode"] != "off" and hasattr(app["cache"].source, "delete")
 
 
 async def handle_status(request: web.Request) -> web.Response:
@@ -195,6 +211,7 @@ async def handle_status(request: web.Request) -> web.Response:
             "cache_seconds": cache.ttl,
             "allow_import": request.app["allow_import"],
             "allow_delete": delete_enabled(request.app),
+            "delete_mode": request.app["delete_mode"],
             "delete_supported": hasattr(cache.source, "delete"),
             "auth_enabled": request.app.get("auth") is not None,
             "https": request.secure,
@@ -235,11 +252,11 @@ def create_app() -> web.Application:
     app["cache"] = Cache(source, ttl=int(os.environ.get("SNAPVIZ_CACHE_SECONDS", "300")))
     app["allow_import"] = _env_bool("SNAPVIZ_ALLOW_IMPORT", True)
     app["exclude_patterns"] = _env_list("SNAPVIZ_EXCLUDE_DATASETS", DEFAULT_EXCLUDE)
-    app["allow_delete"] = _env_bool("SNAPVIZ_ALLOW_DELETE", False)
-    if app["allow_delete"]:
-        log.warning("Deleting snapshots via the web UI is ENABLED (SNAPVIZ_ALLOW_DELETE)")
-        if app["auth"] is None:
-            log.warning("No SNAPVIZ_PASSWORD set: everyone who can reach the web UI can delete snapshots")
+    app["delete_mode"] = delete_mode()
+    if app["delete_mode"] == "off":
+        log.info("Deleting snapshots is locked (SNAPVIZ_ALLOW_DELETE=false)")
+    elif app["auth"] is None:
+        log.warning("No SNAPVIZ_PASSWORD set: everyone who can reach the web UI can switch on deleting snapshots")
 
     app.router.add_get("/", handle_index)
     app.router.add_get("/api/snapshots", handle_snapshots)

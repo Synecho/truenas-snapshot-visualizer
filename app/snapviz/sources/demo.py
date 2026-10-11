@@ -36,6 +36,17 @@ LAYOUT = {
     "backup/replica": (0, 0.0, []),
     "backup/replica/photos": (905 * GiB, 0.004, ["daily", "weekly", "monthly", "yearly"]),
     "backup/replica/nextcloud": (630 * GiB, 0.015, ["daily", "weekly", "monthly", "yearly"]),
+    # boot environments, managed by TrueNAS (kept last so the random data above stays the same)
+    "boot-pool": (0, 0.0, []),
+    "boot-pool/ROOT": (0, 0.0, []),
+    "boot-pool/ROOT/24.10.2": (2600 * MiB, 0.0, []),
+    "boot-pool/ROOT/25.04.2": (2800 * MiB, 0.0, []),
+}
+
+# boot environment snapshots: dataset -> [(name, age in days)]
+BOOT_SNAPSHOTS = {
+    "boot-pool/ROOT/24.10.2": [("pristine", 620), ("install-2025-06-10_22-06-26", 488)],
+    "boot-pool/ROOT/25.04.2": [("pristine", 140)],
 }
 
 VOLUMES = {"tank/vm/win11", "tank/vm/homeassistant"}
@@ -94,6 +105,18 @@ def generate(seed: int = 42) -> SnapshotReport:
                         written=int(size * rng.uniform(0.01, 0.1)),
                     )
                 )
+
+        for name, age in BOOT_SNAPSHOTS.get(ds_name, []):
+            snaps.append(
+                Snapshot(
+                    dataset=ds_name,
+                    name=name,
+                    creation=now - age * 86400,
+                    used=int(rng.uniform(80, 400) * MiB),
+                    referenced=int(size * rng.uniform(0.9, 1.0)),
+                    written=int(rng.uniform(100, 600) * MiB),
+                )
+            )
 
         # de-duplicate names produced by overlapping schedules
         seen: set[str] = set()

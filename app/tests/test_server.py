@@ -65,12 +65,33 @@ async def _first_snapshots(c, n=2):
     return rows, [f"{r['dataset']}@{r['name']}" for r in rows if not r["holds"]][:n]
 
 
-async def test_delete_disabled_by_default(client):
+async def test_delete_switchable_in_ui_by_default(client):
     c = await client
+    status = await (await c.get("/api/status")).json()
+    assert status["delete_mode"] == "ui" and status["allow_delete"] is True
+
+
+async def test_delete_locked_by_admin(aiohttp_client, monkeypatch):
+    monkeypatch.setenv("SNAPVIZ_SOURCE", "demo")
+    monkeypatch.setenv("SNAPVIZ_ALLOW_DELETE", "false")
+    c = await aiohttp_client(create_app())
     _, ids = await _first_snapshots(c)
     r = await c.post("/api/delete", json={"snapshots": ids}, headers=HDR)
     assert r.status == 403
-    assert (await (await c.get("/api/status")).json())["allow_delete"] is False
+    status = await (await c.get("/api/status")).json()
+    assert status["delete_mode"] == "off" and status["allow_delete"] is False
+
+
+async def test_truenas_managed_snapshots_are_protected(client):
+    c = await client
+    body = await (await c.get("/api/snapshots")).json()
+    assert "boot" in body["managed_patterns"]
+    rows, _ = await _first_snapshots(c)
+    for prefix in ("boot-pool/", "tank/.system", "tank/.ix-apps/"):
+        managed = next(f"{r['dataset']}@{r['name']}" for r in rows if r["dataset"].startswith(prefix))
+        r = await c.post("/api/delete", json={"snapshots": [managed]}, headers=HDR)
+        assert r.status == 400, managed
+        assert "managed by TrueNAS" in (await r.json())["error"]
 
 
 @pytest.fixture

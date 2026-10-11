@@ -30,9 +30,12 @@
           <hr>
           <button role="menuitem" data-act="delete" class="danger" id="mi-delete"></button>
           <div class="menu-note" id="edit-note"></div>
+          <hr>
+          <button role="menuitem" data-act="settings" data-i18n="settings_menu">Settings…</button>
         </div>
       </div>
       <button id="btn-import" class="btn" data-i18n="import">Import</button>
+      <button id="btn-settings" class="btn btn-ghost" data-i18n-title="settings_title" aria-label="Settings"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M19.14 12.94c.04-.31.06-.62.06-.94s-.02-.63-.07-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.61-.22l-2.39.96a7.03 7.03 0 0 0-1.62-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96a.5.5 0 0 0-.61.22L2.71 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.05.31-.08.63-.08.94s.02.63.07.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.3.61.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.25.42.5.42h3.84c.25 0 .46-.18.5-.42l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.48 0 .61-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.6a3.6 3.6 0 1 1 0-7.2 3.6 3.6 0 0 1 0 7.2z"/></svg></button>
       <button id="btn-keys" class="btn btn-ghost" data-i18n-title="kb_title" aria-keyshortcuts="?">?</button>
       <button id="btn-logout" class="btn btn-ghost" data-i18n="logout" hidden>Log out</button>
       <select id="lang-select" class="btn" aria-label="Language">
@@ -205,6 +208,25 @@
       <div class="dialog-actions">
         <button value="cancel" class="btn btn-ghost" id="del-cancel" data-i18n="cancel">Cancel</button>
         <button id="del-go" class="btn btn-danger" disabled data-i18n="del_go">Delete permanently</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="settings-dialog">
+    <form method="dialog" class="dialog-body">
+      <h3 data-i18n="settings_title">Settings</h3>
+      <section class="setting">
+        <label class="setting-toggle">
+          <input type="checkbox" id="set-delete" role="switch">
+          <span>
+            <strong data-i18n="set_delete">Allow deleting snapshots</strong>
+            <span class="small muted" data-i18n="set_delete_desc"></span>
+          </span>
+        </label>
+        <div class="setting-note" id="set-delete-note"></div>
+      </section>
+      <div class="dialog-actions">
+        <button value="close" class="btn btn-primary" data-i18n="close">Close</button>
       </div>
     </form>
   </dialog>

@@ -333,3 +333,16 @@ kbd { display: inline-block; min-width: 1.6em; padding: 1px 5px; border: 1px sol
 .del-confirm { align-items: flex-start; cursor: pointer; }
 #del-go.armed { animation: del-pulse 1s ease-in-out infinite; box-shadow: 0 0 0 3px rgba(198, 40, 40, .35); }
 @keyframes del-pulse { 50% { box-shadow: 0 0 0 6px rgba(198, 40, 40, .15); } }
+
+/* ---------- settings ---------- */
+#btn-settings svg { display: block; }
+.setting { border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+.setting-toggle { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.setting-toggle input { width: 18px; height: 18px; margin: 2px 0 0; flex: none; }
+.setting-toggle input:disabled + span { opacity: .65; }
+.setting-toggle > span { display: flex; flex-direction: column; gap: 4px; }
+.setting-note { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
+.setting-note:empty { display: none; }
+.setting-note.warn { background: var(--warn-bg); color: var(--warn-text); border-radius: 6px; padding: 7px 10px; }
+.linklike { font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }
+.lock { margin-right: 4px; font-size: 11px; }

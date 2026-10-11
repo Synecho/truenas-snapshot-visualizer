@@ -29,7 +29,7 @@ Keyboard: `?` lists all shortcuts – `/` search, `1`–`5` views, `↑`/`↓` o
 `Space` marks a snapshot, `Backspace` zooms the treemap out.
 The details panel shows ready-to-copy `zfs` commands, deletion only as a dry run
 (`zfs destroy -nv`), and `zfs diff` commands that list which files a snapshot holds (the TrueNAS API cannot
-run `zfs diff`, so you paste them into the TrueNAS shell). By default the app is read-only; deleting snapshots from the UI is an opt-in feature (`SNAPVIZ_ALLOW_DELETE`).
+run `zfs diff`, so you paste them into the TrueNAS shell). By default the app is read-only; deleting snapshots is switched on in the web UI settings and always needs a double confirmation.
 
 UI languages: English, German.
 
@@ -95,23 +95,23 @@ app uses an API key instead.
   (HttpOnly, SameSite=Strict, Secure) valid for 30 days; 10 failed attempts lock an IP for 10 minutes.
   Without a password the UI is open to everyone who can reach it.
 
-### Deleting snapshots from the UI (optional)
+### Deleting snapshots from the UI
 
-Off by default. To enable it, add to the YAML:
+Switch it on in the web UI: **gear icon → Settings → Allow deleting snapshots** (stored per browser).
+Then select snapshots (checkboxes in the *Snapshots* table, Ctrl+click in the treemap or timeline) and use
+**Edit → Delete selected snapshots…**, or use **Delete snapshot…** in the details panel.
 
-```yaml
-    environment:
-      SNAPVIZ_ALLOW_DELETE: "true"
-```
+Every deletion needs a **double confirmation**: tick "I understand that … will be deleted permanently", then click
+*Delete* twice (the first click arms the button for 5 seconds). The dialog shows the minimum space that will be
+freed, skips snapshots with a `zfs hold` and warns about the newest snapshot of a dataset (replication).
 
-Then select snapshots (checkboxes in the *Snapshots* table, Ctrl+click in the treemap or timeline, or in the
-details panel) and use **Edit → Delete selected snapshots…**. The confirmation dialog shows the list, the
-minimum space that will be freed, skips snapshots with a `zfs hold`, warns about the newest snapshot of a dataset
-(replication) and asks you to type the number of snapshots.
-
+- **Snapshots managed by TrueNAS are never deleted:** boot environments (`boot-pool`, manage them under
+  *System → Boot*), the system dataset (`.system`) and the apps datasets (`.ix-apps`, `ix-applications`).
+  They are marked with a lock, and the server rejects them as well.
 - Deleting needs the TrueNAS role `SNAPSHOT_DELETE`: works with `user: "0:0"` on the socket or with a Full Admin
   API key, **not** with a Read-Only Administrator.
-- **Set `SNAPVIZ_PASSWORD`** – otherwise everyone who can reach the web UI can delete snapshots.
+- **Set `SNAPVIZ_PASSWORD`** – otherwise everyone who can reach the web UI can switch deleting on.
+- Administrators can lock deleting completely with `SNAPVIZ_ALLOW_DELETE: "false"` (or force it on with `"true"`).
 - Cross-site requests are rejected (custom header + origin check), only snapshot names (`pool/ds@snap`) that are
   part of the loaded data are accepted, and every deletion is logged in the app log.
 
@@ -165,7 +165,7 @@ the app refuses to send the key. Keep *Verify TLS Certificate* off for the defau
 | `TRUENAS_USERNAME` | – | Optional: user owning the key, switches login to `auth.login_ex` |
 | `SNAPVIZ_CACHE_SECONDS` | `300` | Cache lifetime; the Refresh button bypasses the cache |
 | `SNAPVIZ_ALLOW_IMPORT` | `true` | Allow uploading `zfs list` output in the UI |
-| `SNAPVIZ_ALLOW_DELETE` | `false` | Allow deleting snapshots in the UI (see above) |
+| `SNAPVIZ_ALLOW_DELETE` | `ui` | `ui` = can be switched on in the web UI settings, `false` = locked, `true` = always on |
 | `SNAPVIZ_EXCLUDE_DATASETS` | `*/.system*,*/.ix-apps/docker*,*/ix-applications/docker*,*/ix-applications/k3s*` | Comma-separated globs (`*`, `?`, full dataset name) for TrueNAS internals. Matching datasets are hidden while *hide system datasets* is on (default); empty = hide nothing |
 | `SNAPVIZ_PORT` | `8080` | Port the web server listens on |
 | `SNAPVIZ_TLS` | `auto` | `auto` = HTTPS with self-signed certificate, `off` = plain HTTP |
