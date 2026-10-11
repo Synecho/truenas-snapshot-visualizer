@@ -10,12 +10,13 @@ erreichbar sein.
 |---|---|
 | GitHub-Repo `Synecho/truenas-snapshot-visualizer` | erledigt |
 | Image auf ghcr.io, öffentlich | erledigt (aktuell `1.4.0`) |
-| Catalog auf `app_version: 1.4.0`, Image per Digest gepinnt | erledigt |
+| Catalog auf `app_version: 1.4.0`, Image per Digest gepinnt, Port 30530 | erledigt |
 | Catalog-Template mit dem TrueNAS-Validator gerendert und gestartet | erledigt |
 | GitHub-Release mit Changelog (`changelog_url` muss die Version enthalten) | erledigt (`v1.4.0`, `gh release create` bei jedem neuen Release) |
 | **API-Key-Modus auf echtem TrueNAS getestet** | **offen** – der Store nutzt den API-Key, nicht den Socket |
 | Issue bei truenas/apps eröffnen | erledigt: [truenas/apps#6055](https://github.com/truenas/apps/issues/6055) |
-| PR an truenas/apps stellen | offen – nach Rückmeldung im Issue und dem API-Key-Test |
+| PR vorbereitet: Branch `add-snapshot-visualizer` im Fork [Synecho/apps](https://github.com/Synecho/apps/tree/add-snapshot-visualizer), Text in `truenas-catalog/PULL_REQUEST.md` | erledigt |
+| PR an truenas/apps öffnen | offen – nach Rückmeldung im Issue und dem API-Key-Test |
 
 ### API-Key-Modus vor dem PR testen
 
@@ -47,6 +48,16 @@ Solange die App noch nicht im Store ist, bleibt `version` in `app.yaml` bei `1.0
 bei jeder Änderung am Catalog-Eintrag erhöht werden.
 
 ## Pull Request an truenas/apps
+
+Der PR ist fertig vorbereitet. Öffnen mit:
+
+```bash
+gh pr create --repo truenas/apps --base master --head Synecho:add-snapshot-visualizer --title "Add snapshot-visualizer to community train" --body-file truenas-catalog/PULL_REQUEST.md
+```
+
+Ändert sich vorher etwas am Catalog, den Ordner erneut in den Fork-Branch kopieren, committen und pushen.
+
+Was beim Vorbereiten geprüft wurde und was bei späteren Änderungen wieder zu tun ist:
 
 1. Das Issue [truenas/apps#6055](https://github.com/truenas/apps/issues/6055) ist eröffnet; auf eine
    Rückmeldung der Maintainer warten. Im PR auf das Issue verweisen.
