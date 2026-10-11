@@ -44,6 +44,7 @@ Please upload the following to the CDN:
 - **First-time setup:** the app needs a TrueNAS API key. Recommended: a dedicated user in a group with the *Read-Only Administrator* privilege, then *My API Keys → Add*. Deleting snapshots (optional, *Allow Deleting Snapshots*) additionally needs the `SNAPSHOT_DELETE` role.
 - **How it talks to TrueNAS:** JSON-RPC over `wss://host.docker.internal/api/current` (legacy `/websocket` for 24.10), added via `add_extra_host("host.docker.internal", "host-gateway")`. It calls `pool.snapshot.query` / `pool.dataset.query` with a fallback to `zfs.snapshot.query`, and `pool.snapshot.delete` / `zfs.snapshot.delete` only when deleting is enabled. API keys are never sent over plain `ws://`. No host mounts, no storage.
 - **Web UI:** HTTPS with a self-signed certificate by default (portal scheme follows the *Use HTTPS* option), optional password login. The healthcheck uses `python -m snapviz.healthcheck` because busybox `wget` in the Alpine image has no TLS.
+- **Testing status on real hardware:** the app runs on my TrueNAS as a custom app (connected via the middleware socket). The API key path that the catalog uses is covered by automated tests against a simulated middleware for 24.10, 25.04, 25.10 and 27, but I have not yet verified it on a real system. I will report the result here.
 - **Port:** 30530. 30527–30529 are free on master but already claimed by open PRs (#6047, #6050, #5919).
 - **Image:** `ghcr.io/synecho/truenas-snapshot-visualizer`, SemVer tags, pinned by digest.
 

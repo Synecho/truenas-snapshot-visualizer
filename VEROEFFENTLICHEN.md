@@ -16,7 +16,7 @@ erreichbar sein.
 | **API-Key-Modus auf echtem TrueNAS getestet** | **offen** – der Store nutzt den API-Key, nicht den Socket |
 | Issue bei truenas/apps eröffnen | erledigt: [truenas/apps#6055](https://github.com/truenas/apps/issues/6055) |
 | PR vorbereitet: Branch `add-snapshot-visualizer` im Fork [Synecho/apps](https://github.com/Synecho/apps/tree/add-snapshot-visualizer), Text in `truenas-catalog/PULL_REQUEST.md` | erledigt |
-| PR an truenas/apps öffnen | offen – nach Rückmeldung im Issue und dem API-Key-Test |
+| PR an truenas/apps öffnen | erledigt: [truenas/apps#6056](https://github.com/truenas/apps/pull/6056) – Review und CI ausstehend |
 
 ### API-Key-Modus vor dem PR testen
 
