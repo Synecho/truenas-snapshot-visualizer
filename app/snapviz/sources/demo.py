@@ -131,3 +131,42 @@ def _roll_up(report: SnapshotReport, rng: random.Random) -> None:
     for d in report.datasets:
         pool = d.name.split("/")[0]
         d.available = max(pool_size.get(pool, 0) - (by_name[pool].used or 0), 0)
+
+
+class DemoSource:
+    """Demo data that remembers deletions, so the delete workflow can be tried safely."""
+
+    name = "demo"
+
+    def __init__(self) -> None:
+        self._deleted: set[str] = set()
+
+    async def fetch(self) -> SnapshotReport:
+        report = generate()
+        if self._deleted:
+            freed: dict[str, int] = {}
+            kept = []
+            for s in report.snapshots:
+                if s.full_name in self._deleted:
+                    freed[s.dataset] = freed.get(s.dataset, 0) + (s.used or 0)
+                else:
+                    kept.append(s)
+            report.snapshots = kept
+            for d in report.datasets:
+                if d.name in freed and d.usedbysnapshots is not None:
+                    d.usedbysnapshots = max(0, d.usedbysnapshots - freed[d.name])
+        return report
+
+    async def delete(self, snapshot_ids: list[str]) -> list[dict]:
+        held = {s.full_name for s in generate().snapshots if s.holds}
+        results = []
+        for snap_id in snapshot_ids:
+            if snap_id in held:
+                results.append({"id": snap_id, "ok": False, "error": "snapshot has holds (dataset is busy)"})
+            else:
+                self._deleted.add(snap_id)
+                results.append({"id": snap_id, "ok": True, "error": None})
+        return results
+
+    async def close(self) -> None:
+        pass

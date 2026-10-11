@@ -20,6 +20,7 @@ export class Treemap {
     this.groups = [];
     this.hover = null;
     this.selectedId = null;
+    this.marked = new Set();
     this._pending = 0;
 
     new ResizeObserver(() => this.scheduleRender()).observe(wrap);
@@ -37,6 +38,12 @@ export class Treemap {
 
   setSelected(id) {
     this.selectedId = id;
+    this._drawOverlay();
+  }
+
+  /** ids of snapshots picked for deletion */
+  setMarked(ids) {
+    this.marked = ids;
     this._drawOverlay();
   }
 
@@ -146,6 +153,16 @@ export class Treemap {
     const ctx = this.overlay.getContext('2d');
     ctx.clearRect(0, 0, this.overlay.width, this.overlay.height);
     const dpr = this.dpr || 1;
+    if (this.marked.size) {
+      ctx.lineWidth = 2 * dpr;
+      ctx.strokeStyle = '#ff3b5c';
+      ctx.fillStyle = 'rgba(255,59,92,0.28)';
+      for (const l of this.leaves) {
+        if (!this.marked.has(l.node.id)) continue;
+        ctx.fillRect(l.x, l.y, l.w, l.h);
+        if (l.w > 4 * dpr && l.h > 4 * dpr) ctx.strokeRect(l.x + dpr, l.y + dpr, l.w - 2 * dpr, l.h - 2 * dpr);
+      }
+    }
     const sel = this.selectedId && this.leaves.find(l => l.node.id === this.selectedId);
     if (sel) {
       ctx.lineWidth = 3 * dpr;
@@ -211,7 +228,7 @@ export class Treemap {
     const hit = this._hit(e);
     if (!hit) return;
     if (hit.isGroup) this.h.onZoom?.(hit.node);
-    else this.h.onClick?.(hit.node);
+    else this.h.onClick?.(hit.node, e);
   }
 
   _onDblClick(e) {

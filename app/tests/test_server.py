@@ -51,3 +51,71 @@ async def test_import_can_be_disabled(aiohttp_client, monkeypatch):
     c = await aiohttp_client(create_app())
     r = await c.post("/api/import", data="tank/x@a\t5\n")
     assert r.status == 403
+
+
+# ---------------------------------------------------------------- deleting
+
+HDR = {"X-Snapviz-Action": "delete"}
+
+
+async def _first_snapshots(c, n=2):
+    body = await (await c.get("/api/snapshots")).json()
+    f = body["snapshot_fields"]
+    rows = [dict(zip(f, r)) for r in body["snapshots"]]
+    return rows, [f"{r['dataset']}@{r['name']}" for r in rows if not r["holds"]][:n]
+
+
+async def test_delete_disabled_by_default(client):
+    c = await client
+    _, ids = await _first_snapshots(c)
+    r = await c.post("/api/delete", json={"snapshots": ids}, headers=HDR)
+    assert r.status == 403
+    assert (await (await c.get("/api/status")).json())["allow_delete"] is False
+
+
+@pytest.fixture
+def delete_client(aiohttp_client, monkeypatch):
+    monkeypatch.setenv("SNAPVIZ_SOURCE", "demo")
+    monkeypatch.setenv("SNAPVIZ_ALLOW_DELETE", "true")
+    return aiohttp_client(create_app())
+
+
+async def test_delete_flow(delete_client):
+    c = await delete_client
+    assert (await (await c.get("/api/status")).json())["allow_delete"] is True
+    rows, ids = await _first_snapshots(c)
+
+    # CSRF protections
+    r = await c.post("/api/delete", json={"snapshots": ids})
+    assert r.status == 400
+    r = await c.post("/api/delete", data=f'{{"snapshots": ["{ids[0]}"]}}', headers=HDR)
+    assert r.status == 400  # not application/json
+    r = await c.post("/api/delete", json={"snapshots": ids}, headers={**HDR, "Origin": "http://evil.example"})
+    assert r.status == 403
+
+    # never a dataset, never something unknown
+    r = await c.post("/api/delete", json={"snapshots": [rows[0]["dataset"]]}, headers=HDR)
+    assert r.status == 400
+    r = await c.post("/api/delete", json={"snapshots": ["tank@does-not-exist"]}, headers=HDR)
+    assert r.status == 400
+
+    origin = f"http://{c.server.host}:{c.server.port}"
+    r = await c.post("/api/delete", json={"snapshots": ids}, headers={**HDR, "Origin": origin})
+    assert r.status == 200
+    body = await r.json()
+    assert body["deleted"] == 2 and body["failed"] == 0
+
+    # cache was invalidated: the deleted snapshots are gone
+    _, remaining = await _first_snapshots(c, n=10_000)
+    assert not set(ids) & set(remaining)
+
+
+async def test_delete_held_snapshot_fails(delete_client):
+    c = await delete_client
+    rows, _ = await _first_snapshots(c)
+    held = [f"{r['dataset']}@{r['name']}" for r in rows if r["holds"]]
+    assert held
+    r = await c.post("/api/delete", json={"snapshots": held[:1]}, headers=HDR)
+    body = await r.json()
+    assert body["failed"] == 1
+    assert "holds" in body["results"][0]["error"]

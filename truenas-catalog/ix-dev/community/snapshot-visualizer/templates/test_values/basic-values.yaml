@@ -12,6 +12,7 @@ snapshot_visualizer:
   verify_tls: false
   cache_minutes: 5
   allow_import: true
+  allow_delete: false
   additional_envs: []
 
 run_as:

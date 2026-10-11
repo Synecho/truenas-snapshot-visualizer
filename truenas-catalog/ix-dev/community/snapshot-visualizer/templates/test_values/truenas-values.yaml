@@ -12,6 +12,7 @@ snapshot_visualizer:
   verify_tls: false
   cache_minutes: 10
   allow_import: false
+  allow_delete: true
   additional_envs:
     - name: SNAPVIZ_LOG_LEVEL
       value: DEBUG

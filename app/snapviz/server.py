@@ -7,6 +7,7 @@ import logging
 import os
 import time
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from aiohttp import web
 
@@ -30,16 +31,7 @@ def _env_bool(name: str, default: bool) -> bool:
 def make_source():
     kind = os.environ.get("SNAPVIZ_SOURCE", "truenas").strip().lower()
     if kind == "demo":
-        from .sources.demo import generate
-
-        class DemoSource:
-            name = "demo"
-
-            async def fetch(self) -> SnapshotReport:
-                return generate()
-
-            async def close(self) -> None:
-                pass
+        from .sources.demo import DemoSource
 
         return DemoSource()
     if kind == "zfs":
@@ -90,6 +82,10 @@ class Cache:
             )
             return report
 
+    def invalidate(self) -> None:
+        if self.report:
+            self.report.fetched_at = 0.0
+
 
 def _json_error(status: int, message: str) -> web.Response:
     return web.json_response({"error": message}, status=status)
@@ -122,6 +118,58 @@ async def handle_import(request: web.Request) -> web.StreamResponse:
     return resp
 
 
+MAX_DELETE = 5000
+
+
+def _same_origin(request: web.Request) -> bool:
+    """Reject cross-site requests: the UI has no login, so a foreign page must not trigger deletions."""
+    origin = request.headers.get("Origin")
+    if origin is None:
+        return True  # non-browser clients; the custom header check below still applies
+    return urlsplit(origin).netloc == request.host
+
+
+async def handle_delete(request: web.Request) -> web.Response:
+    cache: Cache = request.app["cache"]
+    if not delete_enabled(request.app):
+        return _json_error(403, "Deleting snapshots is disabled. Set SNAPVIZ_ALLOW_DELETE=true to enable it.")
+    # A custom header and a JSON body force a CORS preflight, which we never answer -> no CSRF
+    if request.headers.get("X-Snapviz-Action") != "delete" or request.content_type != "application/json":
+        return _json_error(400, "Missing X-Snapviz-Action header or JSON body")
+    if not _same_origin(request):
+        return _json_error(403, "Cross-origin request rejected")
+    try:
+        body = await request.json()
+        ids = body["snapshots"]
+        assert isinstance(ids, list) and all(isinstance(i, str) for i in ids)
+    except Exception:
+        return _json_error(400, 'Expected {"snapshots": ["pool/dataset@snapshot", ...]}')
+    ids = list(dict.fromkeys(ids))  # de-duplicate, keep order
+    if not ids:
+        return _json_error(400, "No snapshots given")
+    if len(ids) > MAX_DELETE:
+        return _json_error(400, f"At most {MAX_DELETE} snapshots per request")
+    # only snapshots that exist in the data the user is looking at
+    known = {s.full_name for s in cache.report.snapshots} if cache.report else set()
+    unknown = [i for i in ids if "@" not in i or i not in known]
+    if unknown:
+        return _json_error(400, f"Unknown snapshot(s), reload the data first: {', '.join(unknown[:5])}")
+
+    log.info("Deleting %d snapshot(s) on request from %s", len(ids), request.remote)
+    try:
+        results = await cache.source.delete(ids)
+    except Exception as exc:
+        return _json_error(502, str(exc) or exc.__class__.__name__)
+    finally:
+        cache.invalidate()
+    ok = sum(1 for r in results if r["ok"])
+    return web.json_response({"deleted": ok, "failed": len(results) - ok, "results": results})
+
+
+def delete_enabled(app: web.Application) -> bool:
+    return app["allow_delete"] and hasattr(app["cache"].source, "delete")
+
+
 async def handle_status(request: web.Request) -> web.Response:
     cache: Cache = request.app["cache"]
     return web.json_response(
@@ -130,6 +178,8 @@ async def handle_status(request: web.Request) -> web.Response:
             "source": getattr(cache.source, "name", "?"),
             "cache_seconds": cache.ttl,
             "allow_import": request.app["allow_import"],
+            "allow_delete": delete_enabled(request.app),
+            "delete_supported": hasattr(cache.source, "delete"),
             "last_fetch": cache.report.fetched_at if cache.report else None,
             "last_error": cache.error,
         }
@@ -164,10 +214,14 @@ def create_app() -> web.Application:
     source = make_source()
     app["cache"] = Cache(source, ttl=int(os.environ.get("SNAPVIZ_CACHE_SECONDS", "300")))
     app["allow_import"] = _env_bool("SNAPVIZ_ALLOW_IMPORT", True)
+    app["allow_delete"] = _env_bool("SNAPVIZ_ALLOW_DELETE", False)
+    if app["allow_delete"]:
+        log.warning("Deleting snapshots via the web UI is ENABLED (SNAPVIZ_ALLOW_DELETE)")
 
     app.router.add_get("/", handle_index)
     app.router.add_get("/api/snapshots", handle_snapshots)
     app.router.add_post("/api/import", handle_import)
+    app.router.add_post("/api/delete", handle_delete)
     app.router.add_get("/api/status", handle_status)
     app.router.add_get("/healthz", handle_health)
     app.router.add_static("/static/", STATIC_DIR)

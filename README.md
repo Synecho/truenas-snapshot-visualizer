@@ -20,7 +20,7 @@ read-only through the TrueNAS API and shows them as:
 
 Filters (name / regex, dataset, age, minimum size), size metric (`used`, `written`, `referenced`) and color mode
 apply to every view. The details panel shows ready-to-copy `zfs` commands, deletion only as a dry run
-(`zfs destroy -nv`). The app itself never changes anything on your system.
+(`zfs destroy -nv`). By default the app is read-only; deleting snapshots from the UI is an opt-in feature (`SNAPVIZ_ALLOW_DELETE`).
 
 UI languages: English, German.
 
@@ -64,6 +64,27 @@ TrueNAS authenticates socket connections by the caller's UID, so no key or passw
 
 The official app catalog does not allow apps to mount `/var/run/middleware`, so the catalog version of the
 app uses an API key instead.
+
+### Deleting snapshots from the UI (optional)
+
+Off by default. To enable it, add to the YAML:
+
+```yaml
+    environment:
+      SNAPVIZ_ALLOW_DELETE: "true"
+```
+
+Then select snapshots (checkboxes in the *Snapshots* table, Ctrl+click in the treemap or timeline, or in the
+details panel) and use **Edit → Delete selected snapshots…**. The confirmation dialog shows the list, the
+minimum space that will be freed, skips snapshots with a `zfs hold`, warns about the newest snapshot of a dataset
+(replication) and asks you to type the number of snapshots.
+
+- Deleting needs the TrueNAS role `SNAPSHOT_DELETE`: works with `user: "0:0"` on the socket or with a Full Admin
+  API key, **not** with a Read-Only Administrator.
+- The app's web UI has **no login**: everyone who can reach it can delete snapshots once this is enabled.
+  Only enable it on a trusted network or behind a reverse proxy with authentication.
+- Cross-site requests are rejected (custom header + origin check), only snapshot names (`pool/ds@snap`) that are
+  part of the loaded data are accepted, and every deletion is logged in the app log.
 
 ### With an API key
 
@@ -115,6 +136,7 @@ the app refuses to send the key. Keep *Verify TLS Certificate* off for the defau
 | `TRUENAS_USERNAME` | – | Optional: user owning the key, switches login to `auth.login_ex` |
 | `SNAPVIZ_CACHE_SECONDS` | `300` | Cache lifetime; the Refresh button bypasses the cache |
 | `SNAPVIZ_ALLOW_IMPORT` | `true` | Allow uploading `zfs list` output in the UI |
+| `SNAPVIZ_ALLOW_DELETE` | `false` | Allow deleting snapshots in the UI (see above) |
 | `SNAPVIZ_PORT` | `8080` | Port the web server listens on |
 | `SNAPVIZ_LOG_LEVEL` | `INFO` | Python log level |
 

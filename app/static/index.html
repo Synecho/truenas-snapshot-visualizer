@@ -22,6 +22,16 @@
         <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 7.75 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4z"/></svg>
         <span data-i18n="refresh">Refresh</span>
       </button>
+      <div class="menu" id="edit-menu">
+        <button id="btn-edit" class="btn" aria-haspopup="menu" aria-expanded="false"><span data-i18n="edit">Edit</span> ▾</button>
+        <div class="menu-list" id="edit-list" role="menu" hidden>
+          <button role="menuitem" data-act="select-filtered" id="mi-select"></button>
+          <button role="menuitem" data-act="clear" id="mi-clear"></button>
+          <hr>
+          <button role="menuitem" data-act="delete" class="danger" id="mi-delete"></button>
+          <div class="menu-note" id="edit-note"></div>
+        </div>
+      </div>
       <button id="btn-import" class="btn" data-i18n="import">Import</button>
       <select id="lang-select" class="btn" aria-label="Language">
         <option value="en">EN</option>
@@ -169,6 +179,28 @@
   </aside>
 
   <div class="tooltip" id="tooltip" hidden></div>
+
+  <div class="selbar" id="selbar" hidden>
+    <span id="sel-info"></span>
+    <button class="btn btn-ghost" data-act="clear" data-i18n="sel_clear_short">Clear</button>
+    <button class="btn btn-danger" data-act="delete" id="selbar-delete" data-i18n="d_delete">Delete…</button>
+  </div>
+
+  <dialog id="delete-dialog">
+    <form method="dialog" class="dialog-body">
+      <h3 id="del-title"></h3>
+      <p class="small" id="del-summary"></p>
+      <ul class="del-list" id="del-list"></ul>
+      <div id="del-warnings"></div>
+      <label class="del-confirm" id="del-confirm-wrap"><span id="del-confirm-label"></span>
+        <input id="del-confirm" autocomplete="off" inputmode="numeric"></label>
+      <div id="del-result"></div>
+      <div class="dialog-actions">
+        <button value="cancel" class="btn btn-ghost" id="del-cancel" data-i18n="cancel">Cancel</button>
+        <button id="del-go" class="btn btn-danger" disabled data-i18n="del_go">Delete permanently</button>
+      </div>
+    </form>
+  </dialog>
 
   <dialog id="import-dialog">
     <form method="dialog" class="dialog-body">

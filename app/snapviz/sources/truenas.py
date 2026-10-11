@@ -17,6 +17,7 @@ Only read-only query methods are called.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import ipaddress
 import itertools
 import json
@@ -467,42 +468,81 @@ class TrueNASSource:
         report.snapshots = [parse_snapshot(r) for r in snaps if (r.get("name") or r.get("id"))]
         ensure_datasets(report)
 
-    async def _fetch_socket(self) -> SnapshotReport:
-        report = SnapshotReport(source="truenas", host="localhost")
+    @contextlib.asynccontextmanager
+    async def _session(self):
+        """Yield (conn, connection label, default host) authenticated via socket or API key."""
         timeout = aiohttp.ClientTimeout(total=None, sock_connect=15, sock_read=None)
-        connector = aiohttp.UnixConnector(path=self.socket_path)
-        async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
-            conn = await self._connect(session, "ws://localhost", True, self.socket_path)
-            try:
-                user = await self._socket_identity(conn)
-                report.connection = f"socket ({user})"
-                await self._collect(conn, report)
-            finally:
-                await conn.ws.close()
-        return report
+        if self._socket_available():
+            connector = aiohttp.UnixConnector(path=self.socket_path)
+            async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
+                conn = await self._connect(session, "ws://localhost", True, self.socket_path)
+                try:
+                    try:
+                        user = await self._socket_identity(conn)
+                    except SocketNotAuthorized as exc:
+                        if not self.api_key:
+                            raise
+                        log.warning("%s Falling back to the API key.", exc)
+                        user = None
+                    if user is not None:
+                        yield conn, f"socket ({user})", "localhost"
+                        return
+                finally:
+                    await conn.ws.close()
 
-    async def _fetch_api_key(self) -> SnapshotReport:
         self._check_config()
-        report = SnapshotReport(source="truenas", host=self.hostname, connection="API key")
-        timeout = aiohttp.ClientTimeout(total=None, sock_connect=15, sock_read=None)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             conn = await self._connect(session, self.base_url, self._ssl(), self.base_url)
             try:
                 await self._login(conn)
-                await self._collect(conn, report)
+                yield conn, "API key", self.hostname
             finally:
                 await conn.ws.close()
-        return report
 
     async def fetch(self) -> SnapshotReport:
-        if self._socket_available():
-            try:
-                return await self._fetch_socket()
-            except SocketNotAuthorized as exc:
-                if not self.api_key:
-                    raise
-                log.warning("%s Falling back to the API key.", exc)
-        return await self._fetch_api_key()
+        async with self._session() as (conn, label, host):
+            report = SnapshotReport(source="truenas", host=host, connection=label)
+            await self._collect(conn, report)
+        return report
+
+    async def delete(self, snapshot_ids: list[str]) -> list[dict]:
+        """Delete snapshots one by one. Returns [{id, ok, error}] in input order."""
+        results: list[dict] = []
+        async with self._session() as (conn, label, _host):
+            methods = ["pool.snapshot.delete", "zfs.snapshot.delete"]
+            for i, snap_id in enumerate(snapshot_ids):
+                if "@" not in snap_id:  # never hand a dataset name to a delete call
+                    results.append({"id": snap_id, "ok": False, "error": "not a snapshot name"})
+                    continue
+                error = None
+                while methods:
+                    try:
+                        await conn.call(methods[0], [snap_id, {"defer": False, "recursive": False}])
+                        break
+                    except RpcError as exc:
+                        if exc.method_missing:
+                            methods.pop(0)
+                            continue
+                        if exc.not_authorized:
+                            msg = (
+                                "Not allowed to delete snapshots: the TrueNAS user needs the SNAPSHOT_DELETE role "
+                                "(e.g. Full Admin; Read-Only Administrator is not enough)."
+                            )
+                            results.append({"id": snap_id, "ok": False, "error": msg})
+                            results.extend(
+                                {"id": rest, "ok": False, "error": msg} for rest in snapshot_ids[i + 1:]
+                            )
+                            return results
+                        error = exc.reason or str(exc)
+                        break
+                if not methods:
+                    error = "No snapshot delete method available on this TrueNAS version"
+                if error:
+                    log.warning("Deleting %s failed: %s", snap_id, error)
+                else:
+                    log.info("Deleted snapshot %s (via %s)", snap_id, label)
+                results.append({"id": snap_id, "ok": error is None, "error": error})
+        return results
 
     async def close(self) -> None:
         pass

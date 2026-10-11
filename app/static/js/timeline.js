@@ -16,13 +16,14 @@ export class Timeline {
     this.h = handlers;
     this.data = null;
     this.selectedId = null;
+    this.marked = new Set();
     this.hover = null;
     new ResizeObserver(() => this.scheduleRender()).observe(wrap);
     canvas.addEventListener('mousemove', e => this._onMove(e));
     canvas.addEventListener('mouseleave', () => { this.hover = null; this.h.onHover?.(null); this.render(); });
     canvas.addEventListener('click', e => {
       const hit = this._hit(e);
-      if (hit?.snap) this.h.onClick?.(hit.snap);
+      if (hit?.snap) this.h.onClick?.(hit.snap, e);
       else if (hit?.lane) this.h.onLaneClick?.(hit.lane.name);
     });
   }
@@ -34,6 +35,8 @@ export class Timeline {
   }
 
   setSelected(id) { this.selectedId = id; this.scheduleRender(); }
+
+  setMarked(ids) { this.marked = ids; this.scheduleRender(); }
 
   scheduleRender() {
     cancelAnimationFrame(this._raf);
@@ -118,6 +121,11 @@ export class Timeline {
         ctx.lineWidth = 1;
         ctx.strokeStyle = rgb(c.map(v => v * 0.6));
         ctx.stroke();
+        if (this.marked.has(p.snap.id)) {
+          ctx.lineWidth = 2.5;
+          ctx.strokeStyle = '#ff3b5c';
+          ctx.beginPath(); ctx.arc(p.x, cy, p.r + 2, 0, Math.PI * 2); ctx.stroke();
+        }
         if (p.snap.id === this.selectedId || p.snap === this.hover) {
           ctx.lineWidth = 2.5;
           ctx.strokeStyle = text;

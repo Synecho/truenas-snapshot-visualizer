@@ -16,7 +16,9 @@ const state = {
   filtered: [],
   view: 'overview',
   zoom: null,          // dataset name the treemap is zoomed into
-  selected: null,      // snapshot id
+  selected: null,      // snapshot id shown in the details panel
+  selection: new Set(), // snapshot ids picked for deletion
+  caps: { allow_delete: false, delete_supported: false },
   sort: { key: 'used', dir: -1 },
   dsSort: { key: 'usedbysnapshots', dir: -1 },
   now: Date.now() / 1000,
@@ -103,6 +105,9 @@ function ingest(body) {
   state.schemaColors = new Map([...schemaSizes.entries()].sort((a, b) => b[1] - a[1]).map(([k], i) => [k, paletteColor(i)]));
 
   if (state.zoom && !state.datasets.has(state.zoom)) state.zoom = null;
+  const ids = new Set(state.snaps.map(s => s.id));
+  state.selection = new Set([...state.selection].filter(id => ids.has(id)));
+  if (state.imported) state.selection.clear();
 
   fillDatasetSelect();
   updateHeader();
@@ -201,6 +206,7 @@ function applyFilters() {
   const n = state.filtered.length, total = state.snaps.length;
   $('#filter-summary').textContent = t('count_of', { n: fmtNum(n), total: fmtNum(total) });
   renderView();
+  updateSelectionUI();
 }
 
 /* ======================= colors ======================= */
@@ -392,8 +398,9 @@ function renderTreemap() {
         else if (node.kind === 'shared') showTooltip(`<b>${escapeHtml(node.ref.name)}</b><br>${escapeHtml(t('shared_label'))}: ${fmtBytes(node.value)}`, e);
         else showTooltip(`<b>${escapeHtml(node.ref.name)}</b><br>${fmtBytes(node.value)} · ${t('snapshots_n', { n: fmtNum(countLeaves(node)) })}`, e);
       },
-      onClick: node => {
-        if (node.kind === 'snapshot') select(node.ref);
+      onClick: (node, e) => {
+        if (node.kind === 'snapshot' && (e?.ctrlKey || e?.metaKey || e?.shiftKey)) toggleSelection([node.ref.id]);
+        else if (node.kind === 'snapshot') select(node.ref);
         else if (node.kind === 'shared') showSharedDetails(node.ref);
       },
       onZoom: node => { if (node.ref?.name) zoomTo(node.ref.name); },
@@ -444,7 +451,7 @@ function renderTimeline() {
   if (!timeline) {
     timeline = new Timeline($('#tl-wrap'), $('#tl-canvas'), {
       onHover: (s, e) => (s ? showTooltip(snapTooltip(s, state.now, t), e) : hideTooltip()),
-      onClick: s => select(s),
+      onClick: (s, e) => ((e?.ctrlKey || e?.metaKey || e?.shiftKey) ? toggleSelection([s.id]) : select(s)),
       onLaneClick: name => setDatasetFilter(name),
     });
   }
@@ -543,8 +550,10 @@ function renderSnapshots() {
     if (typeof va === 'string' || typeof vb === 'string') return dir * String(va ?? '').localeCompare(String(vb ?? ''));
     return dir * ((va ?? -Infinity) - (vb ?? -Infinity));
   });
-  $('#sn-head').innerHTML = snapCols().map(([k, label, num]) =>
-    `<div data-k="${k}" class="${num ? 'num' : ''}">${label}${key === k ? `<span class="arrow">${dir < 0 ? ' ▼' : ' ▲'}</span>` : ''}</div>`).join('');
+  $('#sn-head').innerHTML = `<div class="cb"><input type="checkbox" id="sn-all" aria-label="${escapeHtml(t('d_select'))}"></div>`
+    + snapCols().map(([k, label, num]) =>
+      `<div data-k="${k}" class="${num ? 'num' : ''}">${label}${key === k ? `<span class="arrow">${dir < 0 ? ' ▼' : ' ▲'}</span>` : ''}</div>`).join('');
+  syncSelectAll();
   $('#sn-count').textContent = t('count_of', { n: fmtNum(snRows.length), total: fmtNum(state.snaps.length) });
   $('#sn-spacer').style.height = snRows.length * ROW_H + 'px';
   if (!snRows.length) $('#sn-spacer').innerHTML = `<div class="empty">${t('no_data')}</div>`;
@@ -561,7 +570,9 @@ function drawSnapRows(force) {
   let html = '';
   for (let i = first; i < last; i++) {
     const s = snRows[i];
-    html += `<div class="vrow${s.id === state.selected ? ' selected' : ''}" style="top:${i * ROW_H}px" data-i="${i}">
+    const picked = state.selection.has(s.id);
+    html += `<div class="vrow${s.id === state.selected ? ' selected' : ''}${picked ? ' marked' : ''}" style="top:${i * ROW_H}px" data-i="${i}">
+      <div class="cb"><input type="checkbox" data-pick="${i}"${picked ? ' checked' : ''} aria-label="${escapeHtml(t('d_select'))}"></div>
       <div title="${escapeHtml(s.dataset)}">${escapeHtml(s.dataset)}</div>
       <div title="${escapeHtml(s.name)}"><span class="age-dot" style="background:${rgb(colorOf(s))}"></span>${escapeHtml(s.name)}</div>
       <div class="num">${escapeHtml(fmtDate(s.creation))}</div>
@@ -601,6 +612,34 @@ function select(s) {
   if (state.view === 'snapshots') drawSnapRows(true);
 }
 
+/** navigator.clipboard only exists in secure contexts (https/localhost); the app usually runs on http. */
+async function copyText(text, pre) {
+  try {
+    if (window.isSecureContext && navigator.clipboard) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch { /* fall through */ }
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+  document.body.append(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch { ok = false; }
+  ta.remove();
+  if (!ok && pre) {
+    // last resort: select the text so the user can press Ctrl+C
+    const range = document.createRange();
+    range.selectNodeContents(pre);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+  return ok;
+}
+
 function copyBlock(cmd) {
   return `<div class="copy-row"><pre class="code">${escapeHtml(cmd)}</pre><button class="btn" data-copy="${escapeHtml(cmd)}">${t('copy')}</button></div>`;
 }
@@ -631,6 +670,8 @@ function showDetails(s) {
     <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
       <button class="btn" data-show-ds="${escapeHtml(s.dataset)}">${t('d_show_ds')}</button>
       <button class="btn" data-zoom-ds="${escapeHtml(s.dataset)}">${t('d_zoom')}</button>
+      <button class="btn" data-pick-id="${escapeHtml(s.id)}">${state.selection.has(s.id) ? t('d_unselect') : t('d_select')}</button>
+      ${deleteBlockedReason() ? '' : `<button class="btn btn-danger" data-delete-id="${escapeHtml(s.id)}">${t('d_delete')}</button>`}
     </div>`;
   $('#details').hidden = false;
 }
@@ -667,6 +708,149 @@ function showTooltip(html, e) {
   tt.style.top = Math.max(4, y) + 'px';
 }
 function hideTooltip() { $('#tooltip').hidden = true; }
+
+/* ======================= selection & deleting ======================= */
+
+function deleteBlockedReason() {
+  if (state.imported) return t('del_imported');
+  if (!state.caps.delete_supported) return t('del_unsupported');
+  if (!state.caps.allow_delete) return t('del_disabled');
+  return null;
+}
+
+function setSelection(next) {
+  state.selection = next;
+  updateSelectionUI();
+}
+
+function toggleSelection(ids) {
+  const next = new Set(state.selection);
+  for (const id of ids) next.has(id) ? next.delete(id) : next.add(id);
+  setSelection(next);
+}
+
+function syncSelectAll() {
+  const all = $('#sn-all');
+  if (!all) return;
+  const n = snRows.filter(s => state.selection.has(s.id)).length;
+  all.checked = n > 0 && n === snRows.length;
+  all.indeterminate = n > 0 && n < snRows.length;
+}
+
+function closeEditMenu() {
+  $('#edit-list').hidden = true;
+  $('#btn-edit').setAttribute('aria-expanded', 'false');
+}
+
+function updateSelectionUI() {
+  const n = state.selection.size;
+  const byId = new Map(state.snaps.map(s => [s.id, s]));
+  const size = [...state.selection].reduce((a, id) => a + (byId.get(id)?.used || 0), 0);
+  const blocked = deleteBlockedReason();
+
+  $('#mi-select').textContent = t('sel_filtered', { n: fmtNum(state.filtered.length) });
+  $('#mi-select').disabled = !state.filtered.length || state.imported;
+  $('#mi-clear').textContent = t('sel_clear');
+  $('#mi-clear').disabled = !n;
+  $('#mi-delete').textContent = t('sel_delete', { n: fmtNum(n) });
+  $('#mi-delete').disabled = !n || !!blocked;
+  $('#edit-note').textContent = blocked || (n ? '' : t('sel_hint'));
+
+  $('#selbar').hidden = !n;
+  $('#sel-info').textContent = t('sel_info', { n: fmtNum(n), size: fmtBytes(size) });
+  $('#selbar-delete').disabled = !!blocked;
+  $('#selbar-delete').title = blocked || '';
+
+  treemap?.setMarked(state.selection);
+  timeline?.setMarked(state.selection);
+  if (state.view === 'snapshots') { drawSnapRows(true); syncSelectAll(); }
+}
+
+const deleteState = { ids: [], running: false, done: false };
+
+function openDeleteDialog(ids) {
+  if (deleteBlockedReason()) return;
+  const byId = new Map(state.snaps.map(s => [s.id, s]));
+  const snaps = ids.map(id => byId.get(id)).filter(Boolean);
+  const held = snaps.filter(s => s.holds > 0);
+  const todo = snaps.filter(s => !(s.holds > 0));
+  const newest = todo.filter(s => {
+    const ds = state.datasets.get(s.dataset);
+    return ds && ds.snaps.every(o => (o.creation ?? 0) <= (s.creation ?? 0));
+  });
+  Object.assign(deleteState, { ids: todo.map(s => s.id), running: false, done: false });
+
+  $('#del-title').textContent = todo.length === 1 ? t('del_title_one') : t('del_title', { n: fmtNum(todo.length) });
+  $('#del-summary').textContent = todo.length
+    ? t('del_summary', { size: fmtBytes(todo.reduce((a, s) => a + (s.used || 0), 0)) })
+    : t('del_none');
+  const shown = snaps.slice(0, 200);
+  $('#del-list').innerHTML = shown.map(s =>
+    `<li data-id="${escapeHtml(s.id)}" class="${s.holds > 0 ? 'skip' : ''}">${escapeHtml(s.id)} <span class="muted">· ${fmtBytes(s.used)} · ${fmtAge(s.age)}</span></li>`).join('')
+    + (snaps.length > shown.length ? `<li class="muted">${escapeHtml(t('del_more', { n: fmtNum(snaps.length - shown.length) }))}</li>` : '');
+  $('#del-warnings').innerHTML = [
+    held.length ? `<div class="del-warn">${escapeHtml(t('del_held', { n: held.length }))}</div>` : '',
+    newest.length ? `<div class="del-warn">${escapeHtml(t('del_newest', { n: newest.length }))}</div>` : '',
+  ].join('');
+  $('#del-confirm-wrap').hidden = !todo.length;
+  $('#del-confirm-label').textContent = t('del_confirm', { n: todo.length });
+  $('#del-confirm').value = '';
+  $('#del-confirm').disabled = false;
+  $('#del-result').textContent = '';
+  $('#del-go').hidden = !todo.length;
+  $('#del-go').disabled = true;
+  $('#del-go').textContent = t('del_go');
+  $('#del-cancel').textContent = t('cancel');
+  $('#del-cancel').disabled = false;
+  $('#delete-dialog').showModal();
+  if (todo.length) $('#del-confirm').focus();
+}
+
+async function runDelete() {
+  if (deleteState.running || deleteState.done || !deleteState.ids.length) return;
+  deleteState.running = true;
+  $('#del-go').disabled = true;
+  $('#del-confirm').disabled = true;
+  $('#del-cancel').disabled = true;
+  $('#del-result').textContent = t('del_running');
+  let body;
+  try {
+    const res = await fetch('/api/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Snapviz-Action': 'delete' },
+      body: JSON.stringify({ snapshots: deleteState.ids }),
+    });
+    body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    if (!res.ok || body.error) throw new Error(body.error || `HTTP ${res.status}`);
+  } catch (err) {
+    $('#del-result').textContent = err.message;
+    deleteState.running = false;
+    $('#del-cancel').disabled = false;
+    $('#del-confirm').disabled = false;
+    return;
+  }
+  const next = new Set(state.selection);
+  for (const r of body.results) {
+    const li = document.querySelector(`#del-list li[data-id="${CSS.escape(r.id)}"]`);
+    if (li) {
+      li.className = r.ok ? 'done' : 'failed';
+      if (!r.ok && r.error) li.insertAdjacentHTML('beforeend', ` <span>– ${escapeHtml(r.error)}</span>`);
+    }
+    if (r.ok) next.delete(r.id);
+  }
+  deleteState.running = false;
+  deleteState.done = true;
+  $('#del-result').textContent = t('del_done', { ok: fmtNum(body.deleted), failed: fmtNum(body.failed) });
+  $('#del-go').hidden = true;
+  $('#del-cancel').textContent = t('close');
+  $('#del-cancel').disabled = false;
+  if (body.results.some(r => r.ok && r.id === state.selected)) {
+    $('#details').hidden = true;
+    state.selected = null;
+  }
+  setSelection(next);
+  load(true);
+}
 
 /* ======================= wiring ======================= */
 
@@ -728,12 +912,23 @@ function init() {
 
   // delegated clicks
   document.addEventListener('click', e => {
-    const tgt = e.target.closest('[data-snap],[data-ds],[data-schema],[data-copy],[data-show-ds],[data-zoom-ds],[data-zoom],[data-k],[data-i]');
+    if (e.target.closest('.vrow .cb, .vhead .cb')) return; // checkboxes are handled on 'change'
+    const tgt = e.target.closest('[data-snap],[data-ds],[data-schema],[data-copy],[data-show-ds],[data-zoom-ds],[data-zoom],[data-k],[data-i],[data-act],[data-pick-id],[data-delete-id]');
     if (!tgt) return;
-    if (tgt.dataset.copy != null) {
-      navigator.clipboard?.writeText(tgt.dataset.copy).then(() => {
-        tgt.textContent = t('copied');
-        setTimeout(() => { tgt.textContent = t('copy'); }, 1200);
+    if (tgt.dataset.act) {
+      closeEditMenu();
+      if (tgt.dataset.act === 'select-filtered') setSelection(new Set([...state.selection, ...state.filtered.map(s => s.id)]));
+      else if (tgt.dataset.act === 'clear') setSelection(new Set());
+      else if (tgt.dataset.act === 'delete') openDeleteDialog([...state.selection]);
+    } else if (tgt.dataset.pickId != null) {
+      toggleSelection([tgt.dataset.pickId]);
+      tgt.textContent = state.selection.has(tgt.dataset.pickId) ? t('d_unselect') : t('d_select');
+    } else if (tgt.dataset.deleteId != null) {
+      openDeleteDialog([tgt.dataset.deleteId]);
+    } else if (tgt.dataset.copy != null) {
+      copyText(tgt.dataset.copy, tgt.previousElementSibling).then(ok => {
+        tgt.textContent = ok ? t('copied') : t('copy_manual');
+        setTimeout(() => { tgt.textContent = t('copy'); }, ok ? 1200 : 3000);
       });
     } else if (tgt.dataset.snap != null) {
       const s = state.snaps.find(x => x.id === tgt.dataset.snap);
@@ -803,7 +998,39 @@ function init() {
     }
   });
 
-  fetch('/api/status').then(r => r.json()).then(st => { $('#btn-import').hidden = !st.allow_import; }).catch(() => {});
+  fetch('/api/status').then(r => r.json()).then(st => {
+    $('#btn-import').hidden = !st.allow_import;
+    state.caps = { allow_delete: !!st.allow_delete, delete_supported: !!st.delete_supported };
+    updateSelectionUI();
+  }).catch(() => {});
+
+  // edit menu
+  $('#btn-edit').addEventListener('click', e => {
+    e.stopPropagation();
+    const list = $('#edit-list');
+    if (list.hidden) { updateSelectionUI(); list.hidden = false; $('#btn-edit').setAttribute('aria-expanded', 'true'); }
+    else closeEditMenu();
+  });
+  document.addEventListener('click', e => { if (!e.target.closest('#edit-menu')) closeEditMenu(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeEditMenu(); });
+
+  // table checkboxes
+  document.addEventListener('change', e => {
+    if (e.target.id === 'sn-all') {
+      const next = new Set(state.selection);
+      for (const s of snRows) e.target.checked ? next.add(s.id) : next.delete(s.id);
+      setSelection(next);
+    } else if (e.target.dataset.pick != null) {
+      toggleSelection([snRows[+e.target.dataset.pick].id]);
+    }
+  });
+
+  // delete dialog
+  $('#del-confirm').addEventListener('input', () => {
+    $('#del-go').disabled = $('#del-confirm').value.trim() !== String(deleteState.ids.length);
+  });
+  $('#del-go').addEventListener('click', e => { e.preventDefault(); runDelete(); });
+  updateSelectionUI();
   load(false);
 }
 

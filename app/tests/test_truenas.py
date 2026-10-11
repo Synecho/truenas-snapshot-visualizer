@@ -42,11 +42,20 @@ DATASETS = [
 ]
 
 
-def make_app(*, legacy=False, has_pool_snapshot=True, key_ok=True, socket_user=None):
+def make_app(*, legacy=False, has_pool_snapshot=True, key_ok=True, socket_user=None, may_delete=True):
     calls = []
 
     def dispatch(method, params):
         calls.append((method, params))
+        if method in ("pool.snapshot.delete", "zfs.snapshot.delete"):
+            if (method == "pool.snapshot.delete") != has_pool_snapshot:
+                raise LookupError(method)
+            if not may_delete:
+                raise PermissionError(method)
+            if params[0].endswith("@held"):
+                raise RuntimeError("[EBUSY] cannot destroy snapshot: dataset is busy")
+            assert params[1] == {"defer": False, "recursive": False}
+            return True
         if method == "auth.me":
             # the real middleware authenticates AF_UNIX peers by UID on connect
             if socket_user:
@@ -80,6 +89,14 @@ def make_app(*, legacy=False, has_pool_snapshot=True, key_ok=True, socket_user=N
             except LookupError:
                 await ws.send_str(json.dumps({"jsonrpc": "2.0", "id": req["id"],
                                               "error": {"code": -32601, "message": "Method not found"}}))
+            except PermissionError:
+                await ws.send_str(json.dumps({"jsonrpc": "2.0", "id": req["id"], "error": {
+                    "code": -32001, "message": "Method call error",
+                    "data": {"error": 13, "errname": "EACCES", "reason": "Not authorized"}}}))
+            except RuntimeError as exc:
+                await ws.send_str(json.dumps({"jsonrpc": "2.0", "id": req["id"], "error": {
+                    "code": -32001, "message": "Method call error",
+                    "data": {"error": 16, "errname": "EBUSY", "reason": str(exc)}}}))
         return ws
 
     async def ddp(request):
@@ -232,3 +249,23 @@ async def test_no_socket_and_no_key(tmp_path):
     src = TrueNASSource("nas.local", "", socket_path=str(tmp_path / "missing.sock"))
     with pytest.raises(TrueNASError, match="No access to TrueNAS configured"):
         await src.fetch()
+
+
+@pytest.mark.parametrize("variant", [dict(), dict(has_pool_snapshot=False)])
+async def test_delete(aiohttp_server, variant):
+    app = make_app(**variant)
+    server = await aiohttp_server(app)
+    src = TrueNASSource(f"ws://127.0.0.1:{server.port}", KEY)
+    results = await src.delete(["tank/data@auto-1", "tank/data@held", "tank/data"])
+    assert [r["ok"] for r in results] == [True, False, False]
+    assert "busy" in results[1]["error"]
+    assert results[2]["error"] == "not a snapshot name"
+    deleted = [p[0] for m, p in app["calls"] if m.endswith("snapshot.delete")]
+    assert "tank/data" not in deleted
+
+
+async def test_delete_not_authorized(aiohttp_server):
+    server = await aiohttp_server(make_app(may_delete=False))
+    results = await TrueNASSource(f"ws://127.0.0.1:{server.port}", KEY).delete(["tank/a@1", "tank/a@2"])
+    assert not any(r["ok"] for r in results)
+    assert all("SNAPSHOT_DELETE" in r["error"] for r in results)

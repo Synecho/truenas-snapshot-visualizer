@@ -87,6 +87,15 @@ questions:
           schema:
             type: boolean
             default: true
+        - variable: allow_delete
+          label: Allow Deleting Snapshots
+          description: |
+            Allow selecting and deleting snapshots in the web UI (with a confirmation dialog).</br>
+            The web UI has no login of its own: anyone who can reach it can delete snapshots.</br>
+            The API key's user needs the SNAPSHOT_DELETE role (e.g. Full Admin); Read-Only Administrator can only view.
+          schema:
+            type: boolean
+            default: false
         - variable: additional_envs
           label: Additional Environment Variables
           schema:
