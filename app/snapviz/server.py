@@ -278,8 +278,12 @@ def main() -> None:
 
     ssl_context = build_ssl_context()
     scheme = "https" if ssl_context else "http"
+    from .listener import run
+
     log.info("TrueNAS Snapshot Visualizer %s listening on %s://%s:%d", __version__, scheme, host, port)
-    web.run_app(create_app(), host=host, port=port, ssl_context=ssl_context, access_log=None, print=None)
+    if ssl_context:
+        log.info("Plain http:// requests on this port are redirected to https://")
+    run(create_app(), host, port, ssl_context)
 
 
 if __name__ == "__main__":

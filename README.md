@@ -80,6 +80,7 @@ app uses an API key instead.
 ### HTTPS and login
 
 - **HTTPS is on by default** (`SNAPVIZ_TLS=auto`) with a self-signed certificate that is generated at start.
+  Opening `http://` on the same port redirects to `https://`.
   Without storage it changes on every restart, so the browser warns again. To keep it, mount a writable
   directory and set `SNAPVIZ_DATA_DIR` (it also keeps logins across restarts):
   ```yaml
