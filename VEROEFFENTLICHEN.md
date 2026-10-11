@@ -9,8 +9,8 @@ erreichbar sein.
 | Schritt | Status |
 |---|---|
 | GitHub-Repo `Synecho/truenas-snapshot-visualizer` | erledigt |
-| Image auf ghcr.io, öffentlich | erledigt (aktuell `1.4.1`) |
-| Catalog auf `app_version: 1.4.1`, Image per Digest gepinnt, Port 30530 | erledigt |
+| Image auf ghcr.io, öffentlich | erledigt (aktuell `1.5.0`) |
+| Catalog auf `app_version: 1.5.0`, Image per Digest gepinnt, Port 30530 | erledigt |
 | Catalog-Template mit dem TrueNAS-Validator gerendert und gestartet | erledigt |
 | GitHub-Release mit Changelog (`changelog_url` muss die Version enthalten) | erledigt (`v1.4.0`, `gh release create` bei jedem neuen Release) |
 | **API-Key-Modus auf echtem TrueNAS getestet** | **offen** – der Store nutzt den API-Key, nicht den Socket |

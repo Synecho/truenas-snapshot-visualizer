@@ -12,20 +12,20 @@ Closes #6055
 
 Adds Snapshot Visualizer to the community train.
 
-Snapshot Visualizer shows the ZFS snapshots of the TrueNAS system the way WinDirStat shows files: a cushion treemap by size, a timeline by age, per-dataset statistics (including the space shared between snapshots, `usedbysnapshots` minus the sum of `used`) and a sortable snapshot table. It groups snapshots by naming schema, so it is easy to see which periodic snapshot task holds the most space. Deleting selected snapshots from the web UI is optional and off by default.
+Snapshot Visualizer shows the ZFS snapshots of the TrueNAS system the way WinDirStat shows files: a cushion treemap by size, a timeline by age, per-dataset statistics (including the space shared between snapshots, `usedbysnapshots` minus the sum of `used`) and a sortable snapshot table. It groups snapshots by naming schema, so it is easy to see which periodic snapshot task holds the most space. Deleting selected snapshots is off until the user switches it on in the web UI settings, and every deletion needs a double confirmation. Snapshots managed by TrueNAS (boot environments, `.system`, `.ix-apps`) can never be deleted.
 
 ## App Information
 
 - **Upstream**: https://github.com/Synecho/truenas-snapshot-visualizer
 - **Documentation**: https://github.com/Synecho/truenas-snapshot-visualizer#readme
-- **App Version**: 1.4.1
+- **App Version**: 1.5.0
 
 ## Testing
 
 Tested locally with:
 
 - [x] basic-values.yaml (demo data, plain HTTP, no password)
-- [x] truenas-values.yaml (TrueNAS API with API key, HTTPS, password, deleting enabled)
+- [x] truenas-values.yaml (TrueNAS API with API key, HTTPS, password, deleting switchable in the UI)
 
 Both value files render with `apps_render_app` (ghcr.io/truenas/apps_validation), `apps_catalog_hash_generate` reproduces the 2.3.15 library hash and `generate_metadata.py` leaves `app.yaml` unchanged. The rendered compose files run healthy with the pinned image (read-only root filesystem, 568:568, all capabilities dropped). `port_validation.py` reports no duplicates.
 
@@ -41,8 +41,8 @@ Please upload the following to the CDN:
 
 ## Special Notes
 
-- **First-time setup:** the app needs a TrueNAS API key. Recommended: a dedicated user in a group with the *Read-Only Administrator* privilege, then *My API Keys → Add*. Deleting snapshots (optional, *Allow Deleting Snapshots*) additionally needs the `SNAPSHOT_DELETE` role.
-- **How it talks to TrueNAS:** JSON-RPC over `wss://host.docker.internal/api/current` (legacy `/websocket` for 24.10), added via `add_extra_host("host.docker.internal", "host-gateway")`. It calls `pool.snapshot.query` / `pool.dataset.query` with a fallback to `zfs.snapshot.query`, and `pool.snapshot.delete` / `zfs.snapshot.delete` only when deleting is enabled. API keys are never sent over plain `ws://`. No host mounts, no storage.
+- **First-time setup:** the app needs a TrueNAS API key. Recommended: a dedicated user in a group with the *Read-Only Administrator* privilege, then *My API Keys → Add*. Deleting snapshots additionally needs the `SNAPSHOT_DELETE` role. *Allow Deleting Snapshots* (default on) only makes deleting switchable in the web UI settings; turning it off locks deleting completely.
+- **How it talks to TrueNAS:** JSON-RPC over `wss://host.docker.internal/api/current` (legacy `/websocket` for 24.10), added via `add_extra_host("host.docker.internal", "host-gateway")`. It calls `pool.snapshot.query` / `pool.dataset.query` with a fallback to `zfs.snapshot.query`, and `pool.snapshot.delete` / `zfs.snapshot.delete` only after the user switched deleting on and confirmed twice; the server refuses snapshots of `boot-pool`, `.system` and `.ix-apps`. API keys are never sent over plain `ws://`. No host mounts, no storage.
 - **Web UI:** HTTPS with a self-signed certificate by default (portal scheme follows the *Use HTTPS* option), optional password login. The healthcheck uses `python -m snapviz.healthcheck` because busybox `wget` in the Alpine image has no TLS.
 - **Testing status on real hardware:** the app runs on my TrueNAS as a custom app (connected via the middleware socket). The API key path that the catalog uses is covered by automated tests against a simulated middleware for 24.10, 25.04, 25.10 and 27, but I have not yet verified it on a real system. I will report the result here.
 - **Port:** 30530. 30527–30529 are free on master but already claimed by open PRs (#6047, #6050, #5919).
