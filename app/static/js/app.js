@@ -5,6 +5,7 @@ import {
 } from './util.js';
 import { Treemap } from './treemap.js';
 import { Timeline, histogramSvg, snapTooltip } from './timeline.js';
+import { parseQuery } from './query.js';
 
 const $ = sel => document.querySelector(sel);
 
@@ -200,19 +201,11 @@ function countSnaps(ds) {
 
 /* ======================= filtering ======================= */
 
-function buildMatcher(q) {
-  q = q.trim();
-  if (!q) return null;
-  const m = q.match(/^\/(.+)\/([i]*)$/);
-  if (m) {
-    try { const re = new RegExp(m[1], m[2] || 'i'); return s => re.test(s.id); } catch { /* fall through */ }
-  }
-  const words = q.toLowerCase().split(/\s+/);
-  return s => words.every(w => s.lower.includes(w));
-}
-
 function applyFilters() {
-  const match = buildMatcher(filters.search);
+  const { match, invalid } = parseQuery(filters.search, filters.metric);
+  const box = $('#f-search');
+  box.classList.toggle('invalid', invalid.length > 0);
+  box.title = invalid.length ? t('q_invalid', { terms: invalid.join(' ') }) : t('f_search_help');
   const ds = filters.dataset;
   let ageTest = null;
   if (filters.age) {
@@ -971,6 +964,11 @@ const KEYS = [
     [['↑', '↓', '|', 'k', 'j'], 'kb_rows'], [['Home', 'End'], 'kb_ends'], [['PgUp', 'PgDn'], 'kb_page'], [['Space'], 'kb_mark'],
   ]],
   ['kb_treemap', [[['Backspace'], 'kb_zoom_out']]],
+  ['q_title', [
+    [['daily', '-hourly'], 'q_text'], [['>10g', '<=500m', '5m..1g'], 'q_size'],
+    [['used>1g', 'written<100m', 'ref>2t'], 'q_metric'], [['age>30d', 'age<2w', 'age:7d..30d'], 'q_age'],
+    [['held'], 'q_held'], [['/regex/'], 'q_regex'],
+  ]],
 ];
 
 function renderKeys() {

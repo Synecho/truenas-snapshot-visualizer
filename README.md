@@ -18,10 +18,13 @@ read-only through the TrueNAS API and shows them as:
   oldest/newest snapshot.
 - **Snapshots** – sortable, filterable, virtualised table for tens of thousands of snapshots, CSV export.
 
-Filters (name / regex, dataset, age, minimum size), size metric (`used`, `written`, `referenced`) and color mode
+Filters (search, dataset, age, minimum size), size metric (`used`, `written`, `referenced`) and color mode
 apply to every view.
 The address bar always holds the current view, filters, treemap zoom and selected snapshot, so you can
 bookmark a view or send it as a link.
+The search box understands more than names: `>10g` or `5m..1g` (size in the selected metric), `used>1g`,
+`written<100m`, `ref>2t`, `age>30d` or `age:7d..30d`, `-hourly` (exclude), `held` and `/regex/`; terms are combined
+with AND, e.g. `tank/vm age>90d >1g`.
 Keyboard: `?` lists all shortcuts – `/` search, `1`–`5` views, `↑`/`↓` or `j`/`k` through the snapshots table,
 `Space` marks a snapshot, `Backspace` zooms the treemap out.
 The details panel shows ready-to-copy `zfs` commands, deletion only as a dry run
