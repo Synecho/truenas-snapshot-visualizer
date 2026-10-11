@@ -29,6 +29,18 @@ const state = {
 
 const filters = { search: '', dataset: '', age: '', minsize: 0, metric: 'used', color: 'age' };
 
+const HIDE_KEY = 'snapviz.hideSystem';
+let hideSystem = true;
+try { hideSystem = localStorage.getItem(HIDE_KEY) !== '0'; } catch { /* ignore */ }
+
+/** Glob (`*`, `?`, matched against the full dataset name) -> predicate. */
+function excludeMatcher(patterns) {
+  if (!patterns?.length) return () => false;
+  const esc = s => s.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp('^(?:' + patterns.map(p => esc(p).replace(/\*/g, '.*').replace(/\?/g, '.')).join('|') + ')$');
+  return name => re.test(name);
+}
+
 /* ======================= data loading ======================= */
 
 async function load(force = false) {
@@ -56,11 +68,16 @@ function ingest(body) {
   state.now = Date.now() / 1000;
   const f = body.snapshot_fields;
   const idx = Object.fromEntries(f.map((k, i) => [k, i]));
+  const system = excludeMatcher(body.exclude_patterns);
+  const hidden = hideSystem ? system : () => false;
   state.datasets = new Map();
   for (const d of body.datasets) {
+    if (hidden(d.name)) continue;
     state.datasets.set(d.name, { ...d, snaps: [], children: [], pool: d.name.split('/')[0] });
   }
-  state.snaps = body.snapshots.map(r => {
+  const rows = body.snapshots.filter(r => !hidden(r[idx.dataset]));
+  state.systemSnaps = body.snapshots.reduce((n, r) => n + system(r[idx.dataset]), 0);
+  state.snaps = rows.map(r => {
     const s = {
       dataset: r[idx.dataset],
       name: r[idx.name],
@@ -134,6 +151,10 @@ function updateHeader() {
   } else {
     hideBanner();
   }
+  const patterns = b.exclude_patterns ?? [];
+  $('#f-hide-wrap').hidden = !state.systemSnaps;
+  $('#f-hide-wrap').title = t('f_hide_system_title', { patterns: patterns.join(', ') });
+  $('#f-hide-count').textContent = `(${fmtNum(state.systemSnaps)})`;
 }
 
 function showBanner(text, kind, action) {
@@ -905,6 +926,12 @@ function init() {
   });
   $('#tm-shared').addEventListener('change', () => renderView());
   $('#tl-log').addEventListener('change', () => renderView());
+  $('#f-hide-system').checked = hideSystem;
+  $('#f-hide-system').addEventListener('change', e => {
+    hideSystem = e.target.checked;
+    try { localStorage.setItem(HIDE_KEY, hideSystem ? '1' : '0'); } catch { /* ignore */ }
+    if (state.raw) ingest(state.raw);
+  });
 
   $('#btn-refresh').addEventListener('click', () => load(true));
   $('#lang-select').addEventListener('change', e => {

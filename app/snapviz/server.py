@@ -28,6 +28,25 @@ def _env_bool(name: str, default: bool) -> bool:
     return value.strip().lower() in ("1", "true", "yes", "on")
 
 
+# Datasets that are TrueNAS internals rather than user data; hidden in the UI by default (toggleable).
+DEFAULT_EXCLUDE = ["*/.system*", "*/.ix-apps/docker*", "*/ix-applications/docker*", "*/ix-applications/k3s*"]
+
+
+def _env_list(name: str, default: list[str]) -> list[str]:
+    value = os.environ.get(name)
+    if value is None:
+        return list(default)
+    return [p.strip() for p in value.split(",") if p.strip()]
+
+
+def _report_json(request: web.Request, report) -> web.StreamResponse:
+    body = report.to_json()
+    body["exclude_patterns"] = request.app["exclude_patterns"]
+    resp = web.json_response(body)
+    resp.enable_compression()
+    return resp
+
+
 def make_source():
     kind = os.environ.get("SNAPVIZ_SOURCE", "truenas").strip().lower()
     if kind == "demo":
@@ -98,9 +117,7 @@ async def handle_snapshots(request: web.Request) -> web.StreamResponse:
         report = await cache.get(force=force)
     except Exception as exc:  # surfaced to the UI
         return _json_error(502, str(exc) or exc.__class__.__name__)
-    resp = web.json_response(report.to_json())
-    resp.enable_compression()
-    return resp
+    return _report_json(request, report)
 
 
 async def handle_import(request: web.Request) -> web.StreamResponse:
@@ -113,9 +130,7 @@ async def handle_import(request: web.Request) -> web.StreamResponse:
     if not report.snapshots:
         return _json_error(400, "No snapshots found in the uploaded text")
     report.fetched_at = time.time()
-    resp = web.json_response(report.to_json())
-    resp.enable_compression()
-    return resp
+    return _report_json(request, report)
 
 
 MAX_DELETE = 5000
@@ -214,6 +229,7 @@ def create_app() -> web.Application:
     source = make_source()
     app["cache"] = Cache(source, ttl=int(os.environ.get("SNAPVIZ_CACHE_SECONDS", "300")))
     app["allow_import"] = _env_bool("SNAPVIZ_ALLOW_IMPORT", True)
+    app["exclude_patterns"] = _env_list("SNAPVIZ_EXCLUDE_DATASETS", DEFAULT_EXCLUDE)
     app["allow_delete"] = _env_bool("SNAPVIZ_ALLOW_DELETE", False)
     if app["allow_delete"]:
         log.warning("Deleting snapshots via the web UI is ENABLED (SNAPVIZ_ALLOW_DELETE)")
