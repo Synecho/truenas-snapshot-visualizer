@@ -12,7 +12,7 @@ erreichbar sein.
 | Image auf ghcr.io, öffentlich | erledigt (aktuell `1.3.0`) |
 | Catalog auf `app_version: 1.3.0`, Image per Digest gepinnt | erledigt |
 | Catalog-Template mit dem TrueNAS-Validator gerendert und gestartet | erledigt |
-| **GitHub-Releases mit Changelog** (`changelog_url` muss die Version enthalten) | **offen** – bisher gibt es nur Tags |
+| GitHub-Release mit Changelog (`changelog_url` muss die Version enthalten) | erledigt (`v1.3.0`, `gh release create` bei jedem neuen Release) |
 | **API-Key-Modus auf echtem TrueNAS getestet** | **offen** – der Store nutzt den API-Key, nicht den Socket |
 | Issue bei truenas/apps eröffnen, PR stellen | offen |
 
