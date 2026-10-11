@@ -1,7 +1,7 @@
 images:
   image:
     repository: ghcr.io/synecho/truenas-snapshot-visualizer
-    tag: "1.0.0"
+    tag: "1.0.0@sha256:f3c5c43cfcc5cb0b3bba925ee82d6564f5bf4977c12d2473998a000a920ca345"
 
 consts:
   snapshot_visualizer_container_name: snapshot-visualizer
