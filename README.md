@@ -1,0 +1,131 @@
+# TrueNAS Snapshot Visualizer
+
+See where your ZFS snapshot space goes, the way WinDirStat shows files.
+
+![Treemap view](docs/screenshots/treemap.png)
+
+**Snapshot Visualizer** is a small TrueNAS app with a web UI. It reads all datasets and snapshots
+read-only through the TrueNAS API and shows them as:
+
+- **Overview** – snapshot space, unique vs. shared space, age distribution, largest snapshots,
+  datasets with the most snapshot space and space per *naming schema* (= per periodic snapshot task).
+- **Treemap** – a WinDirStat-style cushion treemap (pool → dataset → snapshot). Area = size, color = age,
+  dataset or naming schema. Click to zoom into a dataset, right-click to zoom out.
+  The grey "shared snapshot space" blocks show space that belongs to *several* snapshots and is only freed
+  when all of them are deleted.
+- **Timeline** – space by creation date plus one lane per dataset with a bubble per snapshot.
+- **Datasets** – sortable table with snapshot count, snapshot space, shared space, data vs. snapshot ratio,
+  oldest/newest snapshot.
+- **Snapshots** – sortable, filterable, virtualised table for tens of thousands of snapshots, CSV export.
+
+Filters (name / regex, dataset, age, minimum size), size metric (`used`, `written`, `referenced`) and color mode
+apply to every view. The details panel shows ready-to-copy `zfs` commands, deletion only as a dry run
+(`zfs destroy -nv`). The app itself never changes anything on your system.
+
+UI languages: English, German.
+
+## Installation on TrueNAS
+
+### From the TrueNAS app catalog
+
+*Apps → Discover Apps → search for "Snapshot Visualizer" → Install* (once the app is accepted in the
+community train).
+
+### As a custom app (before it is in the catalog)
+
+*Apps → Discover Apps → ⋮ → Install via YAML* and paste:
+
+```yaml
+services:
+  snapshot-visualizer:
+    image: ghcr.io/synecho/truenas-snapshot-visualizer:1.0.0
+    user: "568:568"
+    read_only: true
+    restart: unless-stopped
+    ports:
+      - "30527:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      TRUENAS_HOST: host.docker.internal
+      TRUENAS_API_KEY: "<your API key>"
+```
+
+Then open `http://<your-truenas>:30527`.
+
+### API key
+
+The app needs an API key with read access to pools, datasets and snapshots.
+The safest option is a dedicated user:
+
+1. **Credentials → Users → Add**: e.g. `snapviz`, *Disable Password* on, no shell, no SMB.
+2. Put the user into a group that has the **Read-Only Administrator** privilege
+   (*Credentials → Groups → edit → Privileges*).
+3. User menu at the top right → **My API Keys → Add**, select the user and copy the key
+   (it is shown only once). On TrueNAS 24.10 keys are global: *Settings menu → API Keys → Add*.
+4. Paste it into the app settings (*TrueNAS API Key*).
+
+On TrueNAS 25.04+ the app logs in with `auth.login_with_api_key`. If a future TrueNAS version drops that
+method, set the additional environment variable `TRUENAS_USERNAME` to the key's user name and the app
+uses `auth.login_ex` instead.
+
+The app connects to `https://host.docker.internal` (the TrueNAS system it runs on). TrueNAS **revokes API keys
+that are sent over unencrypted HTTP**, so the app always uses HTTPS/WSS; if you enter a host with `http://`
+the app refuses to send the key. Keep *Verify TLS Certificate* off for the default self-signed certificate.
+
+## Configuration (environment variables)
+
+| Variable | Default | Description |
+|---|---|---|
+| `SNAPVIZ_SOURCE` | `truenas` | `truenas` (API), `demo` (generated data) or `zfs` (local `zfs` binary) |
+| `TRUENAS_HOST` | `host.docker.internal` | Host name, IP or URL of the TrueNAS web UI |
+| `TRUENAS_API_KEY` | – | API key |
+| `TRUENAS_VERIFY_TLS` | `false` | Verify the TLS certificate |
+| `TRUENAS_USERNAME` | – | Optional: user owning the key, switches login to `auth.login_ex` |
+| `SNAPVIZ_CACHE_SECONDS` | `300` | Cache lifetime; the Refresh button bypasses the cache |
+| `SNAPVIZ_ALLOW_IMPORT` | `true` | Allow uploading `zfs list` output in the UI |
+| `SNAPVIZ_PORT` | `8080` | Port the web server listens on |
+| `SNAPVIZ_LOG_LEVEL` | `INFO` | Python log level |
+
+### Without TrueNAS: import `zfs list` output
+
+The *Import* button accepts the output of
+
+```sh
+zfs list -Hp -t filesystem,volume -o name,type,used,usedbysnapshots,usedbydataset,usedbychildren,available,referenced > zfs.txt
+zfs list -Hp -t snapshot -o name,used,referenced,written,creation,userrefs >> zfs.txt
+```
+
+from any ZFS system (Proxmox, Linux, FreeBSD, …). Nothing is stored on the server.
+
+## Understanding the numbers
+
+- **used** of a snapshot = space that is *only* in this snapshot. Deleting just this snapshot frees this much.
+- **usedbysnapshots** of a dataset = all space held by its snapshots. It is usually *larger* than the sum of
+  the snapshots' `used`, because blocks referenced by two or more snapshots are not counted in any single
+  snapshot. The app shows this difference as **shared** space.
+- **written** = data written to the dataset between the previous snapshot and this one (≈ change rate).
+- **referenced** = size of the dataset as it was when the snapshot was taken.
+
+## Development
+
+```sh
+cd app
+python -m venv .venv && . .venv/bin/activate
+pip install -r requirements.txt pytest pytest-aiohttp
+SNAPVIZ_SOURCE=demo python -m snapviz      # http://localhost:8080
+pytest -q
+```
+
+The frontend is plain HTML/CSS/JavaScript without build step or external dependencies (`app/static`).
+The backend is a small aiohttp server (`app/snapviz`).
+
+```
+app/                     Docker image (backend + static UI)
+truenas-catalog/         files for a pull request to github.com/truenas/apps (ix-dev/community/snapshot-visualizer)
+.github/workflows/       builds and publishes ghcr.io/<owner>/truenas-snapshot-visualizer
+```
+
+## License
+
+MIT

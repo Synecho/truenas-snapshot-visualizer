@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Snapshot Visualizer</title>
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/style.css">
+  <script type="module" src="/static/js/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="/static/icon.svg" alt="" width="26" height="26">
+      <span data-i18n="title">Snapshot Visualizer</span>
+      <span class="badge" id="source-badge"></span>
+    </div>
+    <div class="topbar-actions">
+      <span class="muted small" id="fetched-info"></span>
+      <button id="btn-refresh" class="btn" data-i18n-title="refresh_title">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 7.75 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4z"/></svg>
+        <span data-i18n="refresh">Refresh</span>
+      </button>
+      <button id="btn-import" class="btn" data-i18n="import">Import</button>
+      <select id="lang-select" class="btn" aria-label="Language">
+        <option value="en">EN</option>
+        <option value="de">DE</option>
+      </select>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-view="overview" class="active" data-i18n="tab_overview">Overview</button>
+    <button role="tab" data-view="treemap" data-i18n="tab_treemap">Treemap</button>
+    <button role="tab" data-view="timeline" data-i18n="tab_timeline">Timeline</button>
+    <button role="tab" data-view="datasets" data-i18n="tab_datasets">Datasets</button>
+    <button role="tab" data-view="snapshots" data-i18n="tab_snapshots">Snapshots</button>
+  </nav>
+
+  <section class="filters">
+    <label class="f-search">
+      <span data-i18n="f_search">Search</span>
+      <input id="f-search" type="search" data-i18n-placeholder="f_search_ph" placeholder="name or /regex/" autocomplete="off">
+    </label>
+    <label>
+      <span data-i18n="f_dataset">Dataset</span>
+      <select id="f-dataset"></select>
+    </label>
+    <label>
+      <span data-i18n="f_age">Age</span>
+      <select id="f-age">
+        <option value="" data-i18n="any">any</option>
+        <option value="lt:1">&lt; 1 d</option>
+        <option value="lt:7">&lt; 7 d</option>
+        <option value="lt:30">&lt; 30 d</option>
+        <option value="gt:30">&gt; 30 d</option>
+        <option value="gt:90">&gt; 90 d</option>
+        <option value="gt:180">&gt; 180 d</option>
+        <option value="gt:365">&gt; 1 y</option>
+      </select>
+    </label>
+    <label>
+      <span data-i18n="f_minsize">Min. size</span>
+      <select id="f-minsize">
+        <option value="0" data-i18n="any">any</option>
+        <option value="1048576">≥ 1 MiB</option>
+        <option value="104857600">≥ 100 MiB</option>
+        <option value="1073741824">≥ 1 GiB</option>
+        <option value="10737418240">≥ 10 GiB</option>
+        <option value="107374182400">≥ 100 GiB</option>
+      </select>
+    </label>
+    <label>
+      <span data-i18n="f_metric">Size metric</span>
+      <select id="f-metric">
+        <option value="used" data-i18n="m_used">Used (unique)</option>
+        <option value="written" data-i18n="m_written">Written</option>
+        <option value="referenced" data-i18n="m_referenced">Referenced</option>
+      </select>
+    </label>
+    <label>
+      <span data-i18n="f_color">Color</span>
+      <select id="f-color">
+        <option value="age" data-i18n="c_age">by age</option>
+        <option value="dataset" data-i18n="c_dataset">by dataset</option>
+        <option value="schema" data-i18n="c_schema">by naming schema</option>
+      </select>
+    </label>
+    <button id="f-reset" class="btn btn-ghost" data-i18n="reset">Reset</button>
+    <span class="filter-summary muted small" id="filter-summary"></span>
+  </section>
+
+  <div id="banner" class="banner" hidden></div>
+
+  <main id="main">
+    <div id="loading" class="loading"><div class="spinner"></div><span data-i18n="loading">Loading snapshots…</span></div>
+
+    <section class="view" id="view-overview" hidden>
+      <div class="kpis" id="kpis"></div>
+      <div class="grid2">
+        <div class="card">
+          <h3 data-i18n="ov_age">Age distribution</h3>
+          <div id="ov-age"></div>
+        </div>
+        <div class="card">
+          <h3 data-i18n="ov_datasets">Datasets with most snapshot space</h3>
+          <div id="ov-datasets"></div>
+        </div>
+        <div class="card">
+          <h3 data-i18n="ov_largest">Largest snapshots</h3>
+          <div id="ov-largest"></div>
+        </div>
+        <div class="card">
+          <h3 data-i18n="ov_schemas">Naming schemas (periodic tasks)</h3>
+          <div id="ov-schemas"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-treemap" hidden>
+      <div class="view-toolbar">
+        <div class="breadcrumb" id="tm-breadcrumb"></div>
+        <label class="check"><input type="checkbox" id="tm-shared" checked> <span data-i18n="tm_shared">show shared snapshot space</span></label>
+        <div class="legend" id="tm-legend"></div>
+      </div>
+      <div class="treemap-wrap" id="tm-wrap">
+        <canvas id="tm-canvas"></canvas>
+        <canvas id="tm-overlay"></canvas>
+      </div>
+      <p class="hint muted small" data-i18n="tm_hint">Area = size metric. Click a snapshot for details, click a dataset label (or double-click) to zoom in.</p>
+    </section>
+
+    <section class="view" id="view-timeline" hidden>
+      <div class="card">
+        <h3 data-i18n="tl_hist">Snapshot space by creation date</h3>
+        <div id="tl-hist"></div>
+      </div>
+      <div class="view-toolbar">
+        <label class="check"><input type="checkbox" id="tl-log"> <span data-i18n="tl_log">logarithmic time axis</span></label>
+        <div class="legend" id="tl-legend"></div>
+      </div>
+      <div class="timeline-wrap" id="tl-wrap">
+        <canvas id="tl-canvas"></canvas>
+      </div>
+    </section>
+
+    <section class="view" id="view-datasets" hidden>
+      <div class="table-wrap">
+        <table class="data" id="ds-table"></table>
+      </div>
+    </section>
+
+    <section class="view" id="view-snapshots" hidden>
+      <div class="view-toolbar">
+        <span class="muted small" id="sn-count"></span>
+        <button class="btn" id="sn-export" data-i18n="export_csv">Export CSV</button>
+      </div>
+      <div class="vtable" id="sn-table">
+        <div class="vhead" id="sn-head"></div>
+        <div class="vbody" id="sn-body"><div class="vspacer" id="sn-spacer"></div></div>
+      </div>
+    </section>
+  </main>
+
+  <aside class="details" id="details" hidden>
+    <button class="close" id="details-close" aria-label="Close">×</button>
+    <div id="details-body"></div>
+  </aside>
+
+  <div class="tooltip" id="tooltip" hidden></div>
+
+  <dialog id="import-dialog">
+    <form method="dialog" class="dialog-body">
+      <h3 data-i18n="import_title">Import zfs list output</h3>
+      <p class="small" data-i18n="import_text">Run these commands on any ZFS system and upload or paste the output. Nothing is stored.</p>
+      <pre class="code" id="import-cmds"></pre>
+      <input type="file" id="import-file" accept=".txt,.tsv,.log,text/plain">
+      <textarea id="import-text" rows="8" data-i18n-placeholder="import_paste" placeholder="…or paste here"></textarea>
+      <div class="dialog-actions">
+        <button value="cancel" class="btn btn-ghost" data-i18n="cancel">Cancel</button>
+        <button id="import-go" value="default" class="btn btn-primary" data-i18n="import_go">Visualize</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>
