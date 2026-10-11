@@ -343,7 +343,7 @@ export function setLang(l) {
 export function getLang() { return lang; }
 
 export function t(key, vars) {
-  let s = (STRINGS[lang] && STRINGS[lang][key]) ?? STRINGS.en[key] ?? key;
+  let s = STRINGS[lang]?.[key] ?? STRINGS.en[key] ?? key;
   if (vars) for (const [k, v] of Object.entries(vars)) s = s.replaceAll(`{${k}}`, v);
   return s;
 }

@@ -7,7 +7,13 @@ import pytest
 from aiohttp import web
 
 from snapviz.sources.truenas import (
-    TrueNASError, TrueNASSource, parse_dataset, parse_host, parse_snapshot, to_int, to_timestamp,
+    TrueNASError,
+    TrueNASSource,
+    parse_dataset,
+    parse_host,
+    parse_snapshot,
+    to_int,
+    to_timestamp,
 )
 
 KEY = "1-abcdef"

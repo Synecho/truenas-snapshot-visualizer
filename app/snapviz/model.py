@@ -3,29 +3,28 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from typing import Optional
 
 
 @dataclass
 class Dataset:
     name: str
     type: str = "FILESYSTEM"  # FILESYSTEM | VOLUME
-    used: Optional[int] = None
-    usedbysnapshots: Optional[int] = None
-    usedbydataset: Optional[int] = None
-    usedbychildren: Optional[int] = None
-    available: Optional[int] = None
-    referenced: Optional[int] = None
+    used: int | None = None
+    usedbysnapshots: int | None = None
+    usedbydataset: int | None = None
+    usedbychildren: int | None = None
+    available: int | None = None
+    referenced: int | None = None
 
 
 @dataclass
 class Snapshot:
     dataset: str
     name: str  # part after "@"
-    creation: Optional[int] = None  # unix seconds
-    used: Optional[int] = None  # space unique to this snapshot
-    referenced: Optional[int] = None
-    written: Optional[int] = None  # written since previous snapshot
+    creation: int | None = None  # unix seconds
+    used: int | None = None  # space unique to this snapshot
+    referenced: int | None = None
+    written: int | None = None  # written since previous snapshot
     holds: int = 0
 
     @property
@@ -40,8 +39,8 @@ class SnapshotReport:
     snapshots: list[Snapshot] = field(default_factory=list)
     fetched_at: float = 0.0
     duration: float = 0.0
-    host: Optional[str] = None
-    connection: Optional[str] = None  # e.g. "socket (root)" or "API key"
+    host: str | None = None
+    connection: str | None = None  # e.g. "socket (root)" or "API key"
     warnings: list[str] = field(default_factory=list)
 
     def to_json(self) -> dict:

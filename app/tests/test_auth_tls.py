@@ -7,7 +7,6 @@ from snapviz.auth import COOKIE, Auth, _safe_next
 from snapviz.server import create_app
 from snapviz.tls import build_ssl_context, generate_self_signed
 
-
 # ---------------------------------------------------------------- login
 
 @pytest.fixture
