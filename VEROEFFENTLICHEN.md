@@ -14,7 +14,8 @@ erreichbar sein.
 | Catalog-Template mit dem TrueNAS-Validator gerendert und gestartet | erledigt |
 | GitHub-Release mit Changelog (`changelog_url` muss die Version enthalten) | erledigt (`v1.3.0`, `gh release create` bei jedem neuen Release) |
 | **API-Key-Modus auf echtem TrueNAS getestet** | **offen** – der Store nutzt den API-Key, nicht den Socket |
-| Issue bei truenas/apps eröffnen, PR stellen | offen |
+| Issue bei truenas/apps eröffnen | erledigt: [truenas/apps#6055](https://github.com/truenas/apps/issues/6055) |
+| PR an truenas/apps stellen | offen – nach Rückmeldung im Issue und dem API-Key-Test |
 
 ### API-Key-Modus vor dem PR testen
 
@@ -47,8 +48,8 @@ bei jeder Änderung am Catalog-Eintrag erhöht werden.
 
 ## Pull Request an truenas/apps
 
-1. In [truenas/apps](https://github.com/truenas/apps/issues) ein Issue „New app: Snapshot Visualizer“
-   eröffnen. Die Contribution-Regeln verlangen das vor dem PR.
+1. Das Issue [truenas/apps#6055](https://github.com/truenas/apps/issues/6055) ist eröffnet; auf eine
+   Rückmeldung der Maintainer warten. Im PR auf das Issue verweisen.
 2. `truenas/apps` forken und klonen, dann den Ordner
    `truenas-catalog/ix-dev/community/snapshot-visualizer` nach `ix-dev/community/` kopieren.
    - Unter Windows vorher `git config core.autocrlf false` setzen: Die Bibliothek muss LF-Zeilenenden
